@@ -69,8 +69,10 @@ def GFF_to_JSON(gff_file, output_dir):
                             "qualifiers":f.qualifiers}
             feature_list.append(json_features)
     in_handle.close()
-    with open(os.path.join(output_dir, os.path.basename(gff_file).replace(".gff", ".json")), "w") as f:
-            f.write(json.dumps({"features": feature_list}))
+    isolate_name = os.path.basename(gff_file).replace(".gff", "")
+    with open(os.path.join(output_dir, isolate_name + ".json"), "w") as f:
+        f.write(json.dumps({"isolateName":isolate_name, 
+                            "features": feature_list}))
 
 def main():
     """Main function. Parses command line args and calls functions."""
