@@ -3,16 +3,16 @@ import sys
 
 # download entries
 sys.stderr.write("\nRetrieving genomic sequences (-a genome)\n")
-subprocess.run("python ../entrez_extract-runner.py -s test_accessions.txt -e  --threads 3 -o test_files -a genome", shell=True, check=True)
+subprocess.run("python ../entrez_extract-runner.py -s test_accessions.txt -e e --threads 3 -o test_files -a genome", shell=True, check=True)
 
 sys.stderr.write("\nRetrieving annotations (-a annotation)\n")
-subprocess.run("python ../entrez_extract-runner.py -s test_accessions.txt -e  --threads 3 -o test_files -a annotation", shell=True, check=True)
+subprocess.run("python ../entrez_extract-runner.py -s test_accessions.txt -e e --threads 3 -o test_files -a annotation", shell=True, check=True)
 
 sys.stderr.write("\nRetrieving assembly stats (-a assembly-stats)\n")
-subprocess.run("python ../entrez_extract-runner.py -s test_accessions.txt -e  --threads 3 -o test_files -a assembly-stats", shell=True, check=True)
+subprocess.run("python ../entrez_extract-runner.py -s test_accessions.txt -e e --threads 3 -o test_files -a assembly-stats", shell=True, check=True)
 
 sys.stderr.write("\nRetrieving assembly report (-a assembly-report)\n")
-subprocess.run("python ../entrez_extract-runner.py -s test_accessions.txt -e  --threads 3 -o test_files -a assembly-report", shell=True, check=True)
+subprocess.run("python ../entrez_extract-runner.py -s test_accessions.txt -e e --threads 3 -o test_files -a assembly-report", shell=True, check=True)
 
 # unqip genome and annotation
 subprocess.run("gunzip test_files/*.gz", shell=True, check=True)
