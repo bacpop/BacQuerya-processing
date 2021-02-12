@@ -2,14 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 This script uses Biopython ENTREZ to retrieve and download information of interest available through NCBI.
-- multiprocess download
 """
 from Bio import Entrez
-import urllib.request
-from tqdm import tqdm
 from joblib import Parallel, delayed
-import sys
 import os
+import sys
+from tqdm import tqdm
+import urllib.request
 
 def get_options():
 
@@ -23,14 +22,14 @@ def get_options():
                         "--search_term",
                         dest="accessions",
                         required=True,
-                        help='File of sequences to download. One line per entry. Specify accessions of interest or "genus species" for all accessions.',
+                        help='file of sequences to download. One line per entry. Specify accessions of interest or "genus species" for all accessions.',
                         type=str)
     io_opts.add_argument("-o",
                         "--output",
                         dest="output_dir",
                         required=True,
                         help="output directory for file of interest",
-                        type=str)               
+                        type=str)
     io_opts.add_argument("-e",
                         "--email",
                         dest="email",
@@ -62,20 +61,20 @@ def get_options():
 
 def translate_attr(attribute):
     """Determine attribute suffixes for download from NCBI"""
-    attr_dict = {'genome': ['_genomic.fna.gz', '.fna.gz'], 
-                'annotation':['_genomic.gff.gz', '.gff.gz'], 
-                'assembly-report':['_assembly_report.txt', '_assembly_report.txt'], 
+    attr_dict = {'genome': ['_genomic.fna.gz', '.fna.gz'],
+                'annotation':['_genomic.gff.gz', '.gff.gz'],
+                'assembly-report':['_assembly_report.txt', '_assembly_report.txt'],
                 'assembly-stats':['_assembly_stats.txt', '_assembly_stats.txt']}
     entrez_attribute = attr_dict[attribute][0]
     attribute_suffix = attr_dict[attribute][1]
     return entrez_attribute, attribute_suffix
 
-def download_entries(cleaned_accession, 
-                    entrez_attribute, 
-                    attribute_suffix, 
+def download_entries(cleaned_accession,
+                    entrez_attribute,
+                    attribute_suffix,
                     email,
                     number):
-    """Download the genomic attribute for accessions of interest using Biopython Entrez"""
+    """Download the attribute for accessions of interest using Biopython Entrez"""
     failed_accessions = []
     Entrez.email = email
     handle = Entrez.read(Entrez.esearch(db="assembly", term=cleaned_accession, retmax = number))
@@ -90,7 +89,7 @@ def download_entries(cleaned_accession,
         label = os.path.basename(url)
         attribute_link = os.path.join(url,label + entrez_attribute)
         urllib.request.urlretrieve(attribute_link, label + attribute_suffix)
-    except ValueError: 
+    except ValueError:
         # the requested attribute is not present
         sys.stderr.write("The requested attribute is not present for: " + cleaned_accession)
         pass
@@ -122,22 +121,21 @@ def main():
         cleaned_accessions[i:i + args.n_cpu] for i in range(0, len(cleaned_accessions), args.n_cpu)
     ]
     for job in tqdm(job_list):
-        failed_accessions = Parallel(n_jobs=args.n_cpu)(delayed(download_entries)(access, 
-                                                                                entrez_attribute, 
-                                                                                attribute_suffix, 
-                                                                                args.email, 
+        failed_accessions = Parallel(n_jobs=args.n_cpu)(delayed(download_entries)(access,
+                                                                                entrez_attribute,
+                                                                                attribute_suffix,
+                                                                                args.email,
                                                                                 args.number) for access in job)
     failed_accessions = [failed for row in failed_accessions for failed in row]
     # ensure available attributes are downloaded for all accessions of interest
     for failed_access in failed_accessions:
-        failed = download_entries(failed_access,  
-                                entrez_attribute, 
-                                attribute_suffix,  
+        failed = download_entries(failed_access,
+                                entrez_attribute,
+                                attribute_suffix,
                                 args.email,
                                 args.number)
         if not len(failed) == 0:
             failed_accessions.append(failed)
-            print(failed_accessions)
     sys.exit(0)
 
 if __name__ == '__main__':
