@@ -10,7 +10,8 @@ def deleteDir(dirname):
 
 outputDirs = [
     "test_files",
-    "test_features"
+    "test_features",
+    "test_isolates"
 ]
 
 for outDir in outputDirs:

@@ -14,7 +14,7 @@ def postJSON():
     if not request.json:
         return "not a json post"
     if request.json:
-        with open("test/test_features/allIsolates.json", "r") as j:
+        with open("test/test_isolates/isolateFeatures.json", "r") as j:
             json_file = j.read()
     return jsonify(json_file)
 

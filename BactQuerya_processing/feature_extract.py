@@ -94,7 +94,6 @@ def main():
         features = Parallel(n_jobs=args.n_cpu)(delayed(GFF_to_JSON)(g,
                                                                     args.output_dir) for g in job)
         all_features += features
-   # for i in all_features:
     for i in all_features:
         all_isolate_names.append(i["isolateName"])
     with open(os.path.join(args.output_dir, "allIsolates.json"), "w") as a:
