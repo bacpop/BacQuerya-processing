@@ -10,6 +10,10 @@ entrez_extract:
   email: empty
   attribute: assembly-stats
 
-# options for index_isolates
+# options for isolate_features
 index_isolates:
   index_no: 0
+
+# options for index_isolates
+isolate_assembly_features:
+  index: python_isolate_index
