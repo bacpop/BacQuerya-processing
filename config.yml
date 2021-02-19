@@ -1,0 +1,15 @@
+# Location of BactQuerya_processing repository relative to the Snakefile
+BactQuerya_location: .
+
+# multiprocessing option
+n_cpu: 3
+
+# options for entrez_extract -a assembly-stats
+entrez_extract:
+  accession_file: test/test_accessions.txt
+  email: empty
+  attribute: assembly-stats
+
+# options for index_isolates
+index_isolates:
+  index_no: 0

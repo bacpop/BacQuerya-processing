@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Extract features from isolate-specific assembly stats and constuct a JSON for all features in all isolates.
 """
 from joblib import Parallel, delayed
 import json
@@ -33,9 +34,9 @@ def get_options():
                         type=int)
     io_opts.add_argument("-o",
                         "--output",
-                        dest="output_dir",
+                        dest="output_file",
                         required=True,
-                        help="output directory for isolate jsons",
+                        help="output file for json of isolates",
                         type=str)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
@@ -46,7 +47,7 @@ def get_options():
     args = parser.parse_args()
     return (args)
 
-def assembly_to_JSON(assigned_index, output_dir):
+def assembly_to_JSON(assigned_index):
     """Use assembly stats to extract information for elasticsearch indexing"""
     index_no = assigned_index['index']
     assembly_file = assigned_index['assembly file']
@@ -62,16 +63,14 @@ def assembly_to_JSON(assigned_index, output_dir):
             assembly_dict.update(feature_dict)
         except AttributeError:
             pass
-    with open(os.path.join(output_dir, isolate_name + ".json"), "w") as f:
-        f.write(json.dumps(assembly_dict))
     return assembly_dict
 
 def main():
     """Main function. Parses command line args and calls functions."""
     args = get_options()
 
-    if not os.path.exists(args.output_dir):
-        os.mkdir(args.output_dir)
+    if not os.path.exists(os.path.dirname(args.output_file)):
+        os.mkdir((os.path.dirname(args.output_file)))
     assembly_reports = glob.glob(args.assemblies + '/*_assembly_stats.txt')
 
     indexed_assemblies = []
@@ -87,10 +86,9 @@ def main():
     # parrallelise assembly feature extraction
     all_features = []
     for job in tqdm(job_list):
-        features = Parallel(n_jobs=args.n_cpu)(delayed(assembly_to_JSON)(assem,
-                                                                        args.output_dir) for assem in job)
+        features = Parallel(n_jobs=args.n_cpu)(delayed(assembly_to_JSON)(assem) for assem in job)
         all_features += features
-    with open(os.path.join(args.output_dir, "isolateFeatures.json"), "w") as a:
+    with open(os.path.join(args.output_file), "w") as a:
         a.write(json.dumps({"information":all_features}))
     sys.exit(0)
 

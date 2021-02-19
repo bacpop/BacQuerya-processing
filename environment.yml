@@ -1,0 +1,12 @@
+name: BQ_env
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python
+  - numpy
+  - biopython
+  - flask
+  - flask-cors
+  - tqdm
