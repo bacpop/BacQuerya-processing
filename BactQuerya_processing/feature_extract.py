@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-This script uses GFF parsing to convert GFF files to json strings.
+This script uses GFF and Sequence parsing to convert GFF files to json strings and extract gene names and sequences for COBS indexing.
 """
 from BCBio import GFF
 from Bio import SeqIO
+from Bio.Seq import Seq
 from joblib import Parallel, delayed
 import json
 import glob
@@ -38,6 +39,13 @@ def get_options():
                         required=True,
                         help="output directory for gene json",
                         type=str)
+    io_opts.add_argument("-i",
+                        "--index-no",
+                        dest="index_no",
+                        required=False,
+                        help="integer value to start gene index from",
+                        default=0,
+                        type=int)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
                         required=False,
@@ -48,9 +56,9 @@ def get_options():
     return (args)
 
 def GFF_to_JSON(gff_file, output_dir):
-    """Use BCBio and SeqIO to convert isolate GFF files to JSON strings"""
+    """Use BCBio and SeqIO to convert isolate GFF files to JSON strings and identify the corresponding genomic sequence"""
     feature_list = []
-
+    gene_dicts_list = []
     in_seq_file = gff_file.replace(".gff", ".fna")
     in_seq_handle = open(in_seq_file)
     seq_dict = SeqIO.to_dict(SeqIO.parse(in_seq_handle, "fasta"))
@@ -59,21 +67,33 @@ def GFF_to_JSON(gff_file, output_dir):
     in_handle = open(gff_file)
 
     for rec in GFF.parse(in_handle, base_dict=seq_dict):
+        sequence_record = rec.seq
         features = rec.features
         for f in features:
+            start = int(f.location.start)
+            end = int(f.location.end)
+            strand = int(f.location.strand)
+            if strand == 1:
+                feature_sequence = str(sequence_record[start : end])
+            elif strand == -1:
+                feature_sequence = str(sequence_record[start : end].reverse_complement())
             json_features = {"type":f.type,
-                            "location": {"strand":f.location.strand,
-                                        "start":int(f.location.start),
-                                        "end":int(f.location.end)},
-                            "id":f.id,
-                            "qualifiers":f.qualifiers}
+                            "location": {"strand":strand,
+                                        "start":start,
+                                        "end":end},
+                            "sequence":feature_sequence}
+            qualifiers = f.qualifiers
+            json_features.update(qualifiers)
             feature_list.append(json_features)
+            if json_features["gbkey"][0] == "Gene" or json_features["gbkey"][0] == "gene":
+                gene_dict = {"gene":json_features["Name"][0],
+                             "sequence":json_features["sequence"]}
+                gene_dicts_list.append(gene_dict)
     in_handle.close()
     isolate_name = os.path.basename(gff_file).replace(".gff", "")
     feature_dict = {"isolateName" : isolate_name.replace("_", " "),
-                    "features" : feature_list}
-    with open(os.path.join(output_dir, isolate_name + ".json"), "w") as f:
-        f.write(json.dumps(feature_dict))
+                    "features" : feature_list,
+                    "gene_list": gene_dicts_list}
     return feature_dict
 
 def main():
@@ -89,17 +109,22 @@ def main():
     ]
     # parrallelise feature extraction
     all_features = []
-    all_isolate_names = []
+    all_genes = []
     for job in tqdm(job_list):
         features = Parallel(n_jobs=args.n_cpu)(delayed(GFF_to_JSON)(g,
                                                                     args.output_dir) for g in job)
         all_features += features
-    for i in all_features:
-        all_isolate_names.append(i["isolateName"])
+    index_no = args.index_no
+    for single_isolate in all_features:
+        gene_dict_list = single_isolate["gene_list"]
+        for gene_dict in gene_dict_list:
+            gene_dict.update({"index":index_no})
+            index_no += 1
+            all_genes.append(gene_dict)
     with open(os.path.join(args.output_dir, "allIsolates.json"), "w") as a:
         a.write(json.dumps({"information":all_features}))
-    with open(os.path.join(args.output_dir, "isolateNames.json"), "w") as n:
-        n.write(json.dumps({"information":all_isolate_names}))
+    with open(os.path.join(args.output_dir, "allGenes.json"), "w") as n:
+        n.write(json.dumps({"information":all_genes}))
     sys.exit(0)
 
 if __name__ == '__main__':

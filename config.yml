@@ -8,12 +8,18 @@ n_cpu: 3
 entrez_extract:
   accession_file: test/test_accessions.txt
   email: empty
-  attribute: assembly-stats
+  assembly: assembly-stats
+  gff: annotation
+  genome: genome
 
-# options for isolate_features
-index_isolates:
+# options for isolate_attributes
+isolate_attributes:
   index_no: 0
 
-# options for index_isolates
-isolate_assembly_features:
+# options for feature_extract
+feature_extract:
+  index_no: 0
+
+# options for index_isolate_attributes
+index_isolate_attributes:
   index: python_isolate_index

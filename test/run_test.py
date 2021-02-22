@@ -33,11 +33,10 @@ subprocess.run("python ../entrez_extract-runner.py -s test_accessions.txt -e " +
 # unzip genome and annotation
 subprocess.run("gunzip --force test_files/*.gz", shell=True, check=True)
 
+# extract attributes from assembly stats
+sys.stderr.write("\nCoverting Assembly stats to JSON strings\n")
+subprocess.run("python ../isolate_attributes-runner.py -a test_files -i 0 -o test_attributes/isolateFeatures.json --threads 3", shell=True, check=True)
+
 # extract features from entries
 sys.stderr.write("\nCoverting GFF files to JSON strings\n")
 subprocess.run("python ../feature_extract-runner.py -s test_files -g test_files -o test_features --threads 3", shell=True, check=True)
-
-# extract attributes from assembly stats
-sys.stderr.write("\nCoverting Assembly stats to JSON strings\n")
-subprocess.run("python ../index_isolates-runner.py -a test_files -i 0 -o test_isolates --threads 3", shell=True, check=True)
-

@@ -11,7 +11,8 @@ def deleteDir(dirname):
 outputDirs = [
     "test_files",
     "test_features",
-    "test_isolates"
+    "test_isolates",
+    "test_attributes"
 ]
 
 for outDir in outputDirs:

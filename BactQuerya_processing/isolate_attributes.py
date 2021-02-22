@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Extract features from isolate-specific assembly stats and constuct a JSON for all features in all isolates.
+Extract attributes from isolate-specific assembly stats and constuct a JSON for all attributes in all isolates.
 """
 from joblib import Parallel, delayed
 import json
