@@ -128,5 +128,8 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# COBS index
+cobs/
+
 # Snakemake logs
 .snakemake

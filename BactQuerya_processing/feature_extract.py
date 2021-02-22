@@ -80,7 +80,8 @@ def GFF_to_JSON(gff_file, output_dir):
                             "location": {"strand":strand,
                                         "start":start,
                                         "end":end},
-                            "sequence":feature_sequence}
+                            "sequence":feature_sequence,
+                            "sequenceLength":len(feature_sequence)}
             qualifiers = f.qualifiers
             json_features.update(qualifiers)
             feature_list.append(json_features)
@@ -111,12 +112,12 @@ def main():
     index_no = args.index_no
     for single_isolate in all_features:
         feature_dict_list = single_isolate["features"]
-        for feature_dict in feature_dict_list:
-            if feature_dict["gbkey"][0] == "Gene" or feature_dict["gbkey"][0] == "gene":
-                gene_dict = {"gene":feature_dict["Name"][0],
-                            "sequence":feature_dict["sequence"],
+        for json_features in feature_dict_list:
+            if json_features["gbkey"][0] == "Gene" or json_features["gbkey"][0] == "gene":
+                gene_dict = {"gene":json_features["Name"][0],
+                            "sequence":json_features["sequence"],
                             "index":index_no}
-                feature_dict["gene_index"] = index_no
+                json_features["gene_index"] = index_no
                 index_no += 1
                 all_genes.append(gene_dict)
     with open(os.path.join(args.output_dir, "allIsolates.json"), "w") as a:
