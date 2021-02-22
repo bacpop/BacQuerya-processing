@@ -21,15 +21,14 @@ def postJSON():
 
 @app.route('/sequence', methods=['POST'])
 @cross_origin()
-def postJSON():
+def postSeqResult():
     if not request.json:
         return "not a json post"
     if request.json:
         sequence_dict = request.json
         query_sequence = sequence_dict['searchTerm']
-
-        index = cobs.Search()
-        result = index.search(sequence, threshold = 0.8)
+        index = cobs.Search("cobs/15_index.cobs_compact")
+        result = index.search(query_sequence, threshold = 0.8)
         response = {"sequenceResult" : result}
     return jsonify(response)
 

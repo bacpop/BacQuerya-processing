@@ -58,7 +58,6 @@ def get_options():
 def GFF_to_JSON(gff_file, output_dir):
     """Use BCBio and SeqIO to convert isolate GFF files to JSON strings and identify the corresponding genomic sequence"""
     feature_list = []
-    gene_dicts_list = []
     in_seq_file = gff_file.replace(".gff", ".fna")
     in_seq_handle = open(in_seq_file)
     seq_dict = SeqIO.to_dict(SeqIO.parse(in_seq_handle, "fasta"))
@@ -85,15 +84,10 @@ def GFF_to_JSON(gff_file, output_dir):
             qualifiers = f.qualifiers
             json_features.update(qualifiers)
             feature_list.append(json_features)
-            if json_features["gbkey"][0] == "Gene" or json_features["gbkey"][0] == "gene":
-                gene_dict = {"gene":json_features["Name"][0],
-                             "sequence":json_features["sequence"]}
-                gene_dicts_list.append(gene_dict)
     in_handle.close()
     isolate_name = os.path.basename(gff_file).replace(".gff", "")
     feature_dict = {"isolateName" : isolate_name.replace("_", " "),
-                    "features" : feature_list,
-                    "gene_list": gene_dicts_list}
+                    "features" : feature_list}
     return feature_dict
 
 def main():
@@ -116,11 +110,15 @@ def main():
         all_features += features
     index_no = args.index_no
     for single_isolate in all_features:
-        gene_dict_list = single_isolate["gene_list"]
-        for gene_dict in gene_dict_list:
-            gene_dict.update({"index":index_no})
-            index_no += 1
-            all_genes.append(gene_dict)
+        feature_dict_list = single_isolate["features"]
+        for feature_dict in feature_dict_list:
+            if feature_dict["gbkey"][0] == "Gene" or feature_dict["gbkey"][0] == "gene":
+                gene_dict = {"gene":feature_dict["Name"][0],
+                            "sequence":feature_dict["sequence"],
+                            "index":index_no}
+                feature_dict["gene_index"] = index_no
+                index_no += 1
+                all_genes.append(gene_dict)
     with open(os.path.join(args.output_dir, "allIsolates.json"), "w") as a:
         a.write(json.dumps({"information":all_features}))
     with open(os.path.join(args.output_dir, "allGenes.json"), "w") as n:

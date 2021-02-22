@@ -65,10 +65,22 @@ rule feature_extract:
        'python isolate_attributes-runner.py -a {input} -i {params.index} -o {output} --threads {params.threads}'
 
 # append isolate attributes to elasticsearch index
-rule index_isolates:
+rule index_isolate_attributes:
     input:
         rules.isolate_attributes.output
     params:
         index=config['index_isolate_attributes']['index']
     shell:
        'python index_isolate_attributes-runner.py -f {input} -i {params.index}'
+
+# build COBS index of genetic sequences from the output of feature_extract
+rule index_gene_features:
+    input:
+        os.path.join(rules.feature_extract.output, "allGenes.json")
+    output:
+        directory("sequence_index")
+    params:
+        k_mer=config['index_gene_features']['kmer_length'],
+        threads=config['n_cpu']
+    shell:
+       'python index_gene_features-runner.py -i {input} -o {output} --kmer-length {params.k_mer} --threads {params.threads} --dirty'

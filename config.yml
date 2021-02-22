@@ -23,3 +23,7 @@ feature_extract:
 # options for index_isolate_attributes
 index_isolate_attributes:
   index: python_isolate_index
+
+# options for index_gene_features
+index_gene_features:
+  kmer_length: 15

@@ -31,6 +31,7 @@ def get_options():
     return (args)
 
 def main():
+    """Main function. Parses command line args and calls functions."""
     args = get_options()
 
     client = Elasticsearch("localhost:9200")
