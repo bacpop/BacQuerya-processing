@@ -22,7 +22,7 @@ feature_extract:
 
 # options for index_isolate_attributes
 index_isolate_attributes:
-  index: python_isolate_index
+  index: python_isolate_index3
 
 # options for index_gene_features
 index_gene_features:

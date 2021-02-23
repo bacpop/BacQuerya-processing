@@ -25,7 +25,8 @@ def load_metrics(match_count,
                     match_proportion = round(match_count*100/((query_length-kmer_length)+1), 2)
                     result_metrics = {"isolateName": isolate,
                                     "geneName": feature["Name"][0],
-                                    "numberMatching": match_proportion}
+                                    "numberMatching": match_proportion,
+                                    "gene_index": index}
     return result_metrics
 
 @app.route('/JSON', methods=['POST'])
@@ -47,11 +48,11 @@ def postSeqResult():
         sequence_dict = request.json
         query_sequence = sequence_dict['searchTerm']
         # search for uploaded sequence in COBS index
-        index_name = "cobs/15_index.cobs_compact"
+        index_name = "sequence_index/20_index.cobs_compact"
         index = cobs.Search(index_name)
         result = index.search(query_sequence, threshold = 0.8)
         # load metadata for identified sequences
-        with open("test/test_features/allIsolates.json") as f:
+        with open("isolate_genes/allIsolates.json") as f:
             geneJSON = f.read()
         gene_dicts_list = json.loads(geneJSON)
         gene_dicts_list = gene_dicts_list["information"]

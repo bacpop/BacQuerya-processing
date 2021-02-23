@@ -55,7 +55,7 @@ def assembly_to_JSON(assigned_index):
         assembly_features = f.read().split("\n")
     isolate_name = os.path.basename(assembly_file).replace("_assembly_stats.txt", "")
     assembly_dict = {"isolateName" : isolate_name.replace("_", " "),
-                    "index" : index_no}
+                    "isolate_index" : index_no}
     for line in assembly_features:
         try:
             attribute = re.search('# (.*?):', line).group(1).replace(" ", "_")
@@ -76,7 +76,7 @@ def main():
     indexed_assemblies = []
     index_no = args.index_no
     for assembly in assembly_reports:
-        assigned_index = {"index": index_no, "assembly file": assembly}
+        assigned_index = {"isolate_index": index_no, "assembly file": assembly}
         index_no += 1
         indexed_assemblies.append(assigned_index)
 

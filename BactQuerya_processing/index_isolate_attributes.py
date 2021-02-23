@@ -5,6 +5,7 @@ Append isolate features to locally hosted elasticsearch index
 """
 from elasticsearch import Elasticsearch
 import json
+import os
 import sys
 
 def get_options():
@@ -27,6 +28,12 @@ def get_options():
                         required=True,
                         help='index to create/append to',
                         type=str)
+    io_opts.add_argument("-g",
+                        "--feature-file",
+                        dest="feature_file",
+                        required=True,
+                        help='file of all genes output by feature_extract',
+                        type=str)
     args = parser.parse_args()
     return (args)
 
@@ -34,6 +41,8 @@ def main():
     """Main function. Parses command line args and calls functions."""
     args = get_options()
 
+    if not os.path.isfile(args.feature_file):
+        raise AttributeError("Feature file is missing!")
     client = Elasticsearch("localhost:9200")
     if client.ping():
         sys.stderr.write('\nConnected to ES client\n')

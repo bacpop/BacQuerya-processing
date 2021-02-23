@@ -7,6 +7,7 @@ from Bio import Entrez
 from joblib import Parallel, delayed
 import os
 import sys
+import subprocess
 from tqdm import tqdm
 import urllib.request
 
