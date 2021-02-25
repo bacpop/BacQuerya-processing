@@ -49,7 +49,7 @@ def get_options():
 
 def assembly_to_JSON(assigned_index):
     """Use assembly stats to extract information for elasticsearch indexing"""
-    index_no = assigned_index['index']
+    index_no = assigned_index['isolate_index']
     assembly_file = assigned_index['assembly file']
     with open(assembly_file, "r") as f:
         assembly_features = f.read().split("\n")

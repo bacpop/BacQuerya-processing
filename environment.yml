@@ -7,8 +7,13 @@ dependencies:
   - python
   - numpy
   - biopython
+  - bcbio-gff
+  - joblib
+  - tqdm
   - flask
   - flask-cors
   - tqdm
   - elasticsearch
   - cobs-index
+  - merqury
+  - meryl

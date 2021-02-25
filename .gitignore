@@ -128,8 +128,12 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# COBS index
-cobs/
-
-# Snakemake logs
+# Snakemake outputs
 .snakemake
+retrieved_genomes/
+retrieved_annotations/
+retrieved_assemblies/
+meryl_single_files/
+meryl_merged_files/
+merqury_output/
+logs/
