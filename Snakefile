@@ -144,14 +144,28 @@ rule index_isolate_attributes:
     shell:
        'python index_isolate_attributes-runner.py -f {input.attribute_file} -i {params.index} -g {input.feature_file}'
 
-# build COBS index of genetic sequences from the output of feature_extract
-rule index_gene_features:
+# build COBS index of gene sequences from the output of feature_extract
+rule index_gene_sequences:
     input:
         rules.feature_extract.output
     output:
-        directory("sequence_index")
+        directory("index_genes")
     params:
-        k_mer=config['index_gene_features']['kmer_length'],
-        threads=config['n_cpu']
+        k_mer=config['index_sequences']['kmer_length'],
+        threads=config['n_cpu'],
+        index_type=config['index_sequences']['gene_type']
     shell:
-       'python index_gene_features-runner.py -i {input} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
+       'python index_gene_features-runner.py -t {params.index_type} -f {input} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
+
+# build COBS index of gene sequences from the output of feature_extract
+rule index_assembly_sequences:
+    input:
+        rules.retrieve_genomes.output
+    output:
+        directory("index_assemblies")
+    params:
+        k_mer=config['index_sequences']['kmer_length'],
+        threads=config['n_cpu'],
+        index_type=config['index_sequences']['assembly_type']
+    shell:
+       'python index_gene_features-runner.py -t {params.index_type} -d {input} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'

@@ -128,6 +128,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# species files
+genome_browser/
+
 # Snakemake outputs
 .snakemake
 retrieved_genomes/
@@ -137,3 +140,5 @@ meryl_single_files/
 meryl_merged_files/
 merqury_output/
 logs/
+index_assemblies/
+index_genes/

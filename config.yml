@@ -1,4 +1,4 @@
-# Location of BactQuerya_processing repository relative to the Snakefile
+# Location of BacQuerya_processing repository relative to the Snakefile
 BactQuerya_location: .
 
 # multiprocessing option
@@ -6,7 +6,7 @@ n_cpu: 3
 
 # options for extract_entrez_information
 extract_entrez_information:
-  accession_file: test/single.txt
+  accession_file: test/test_accessions.txt
   email: empty
   assembly: assembly-stats
   gff: annotation
@@ -38,5 +38,7 @@ index_isolate_attributes:
   index: python_isolate_index3
 
 # options for index_gene_features
-index_gene_features:
+index_sequences:
   kmer_length: 31
+  gene_type: gene
+  assembly_type: assembly
