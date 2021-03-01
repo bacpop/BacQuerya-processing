@@ -3,6 +3,7 @@
 """
 Extract attributes from isolate-specific assembly stats and constuct a JSON for all attributes in all isolates.
 """
+from assembly_stats import read_genome, calculate_stats
 from joblib import Parallel, delayed
 import json
 import glob
@@ -15,15 +16,21 @@ def get_options():
 
     import argparse
 
-    description = 'Extract features from gff and sequence files'
+    description = 'Extract assembly stats'
     parser = argparse.ArgumentParser(description=description,
-                                        prog='feature_extract')
+                                        prog='extract_assembly_stats')
     io_opts = parser.add_argument_group('input')
     io_opts.add_argument("-a",
                         "--assemblies",
                         dest="assemblies",
                         required=True,
                         help='directory of assembly reports',
+                        type=str)
+    io_opts.add_argument("-g",
+                        "--genomes",
+                        dest="genomes",
+                        required=True,
+                        help='directory of genomic sequences',
                         type=str)
     io_opts.add_argument("-i",
                         "--index-no",
@@ -47,15 +54,25 @@ def get_options():
     args = parser.parse_args()
     return (args)
 
-def assembly_to_JSON(assigned_index):
+def calculate_assembly_stats(genomeFile):
+    contig_lens, scaffold_lens, gc_cont = read_genome(genomeFile)
+    contig_stats = calculate_stats(contig_lens, gc_cont)
+    scaffold_stats = calculate_stats(scaffold_lens, gc_cont)
+    return contig_stats, scaffold_stats
+
+def assembly_to_JSON(assigned_index, genome_dir):
     """Use assembly stats to extract information for elasticsearch indexing"""
     index_no = assigned_index['isolate_index']
     assembly_file = assigned_index['assembly file']
+    isolate_name = os.path.basename(assembly_file).replace("_assembly_stats.txt", "")
+    genome_file = os.path.join(genome_dir, isolate_name + ".fna")
+    contig_stats, scaffold_stats = calculate_assembly_stats(genome_file)
     with open(assembly_file, "r") as f:
         assembly_features = f.read().split("\n")
-    isolate_name = os.path.basename(assembly_file).replace("_assembly_stats.txt", "")
     assembly_dict = {"isolateName" : isolate_name.replace("_", " "),
-                    "isolate_index" : index_no}
+                    "isolate_index" : index_no,
+                    "contig_stats": contig_stats,
+                    "scaffold_stats": scaffold_stats}
     for line in assembly_features:
         try:
             attribute = re.search('# (.*?):', line).group(1).replace(" ", "_")
@@ -86,7 +103,7 @@ def main():
     # parrallelise assembly feature extraction
     all_features = []
     for job in tqdm(job_list):
-        features = Parallel(n_jobs=args.n_cpu)(delayed(assembly_to_JSON)(assem) for assem in job)
+        features = Parallel(n_jobs=args.n_cpu)(delayed(assembly_to_JSON)(assem, args.genomes) for assem in job)
         all_features += features
     with open(os.path.join(args.output_file), "w") as a:
         a.write(json.dumps({"information":all_features}))

@@ -1,11 +1,10 @@
 import glob
-import gzip
 import os
 import subprocess
 
 configfile: 'config.yml'
 
-# extract assembly-stats
+# retrieve assembly-stats
 rule retrieve_assembly_stats:
     input:
         config['extract_entrez_information']['accession_file']
@@ -18,7 +17,7 @@ rule retrieve_assembly_stats:
     shell:
        'python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}'
 
-# extract isolate-GFFS
+# retrieve isolate-GFFS
 rule retrieve_annotations:
     input:
         config['extract_entrez_information']['accession_file']
@@ -31,7 +30,16 @@ rule retrieve_annotations:
     shell:
        'python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}'
 
-# extract isolate-genomes
+# gunzip annotation files
+rule unzip_annotations:
+    input:
+        rules.retrieve_annotations.output
+    output:
+        directory("unzipped_annotations")
+    shell:
+        "mkdir {output} && cp {input}/*.gz {output} && gunzip {output}/*.gz"
+
+# retrieve isolate-genomes
 rule retrieve_genomes:
     input:
         config['extract_entrez_information']['accession_file']
@@ -44,10 +52,19 @@ rule retrieve_genomes:
     shell:
        'python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}'
 
+# gunzip genome files
+rule unzip_genomes:
+    input:
+        rules.retrieve_genomes.output
+    output:
+        directory("unzipped_genomes")
+    shell:
+        "mkdir {output} && cp {input}/*.gz {output} && gunzip {output}/*.gz"
+
 # build single meryl dbs
 rule single_meryl_dbs:
     input:
-        genomes=rules.retrieve_genomes.output
+        genomes=rules.unzip_genomes.output
     output:
         single_files=directory(config["single_meryl_dbs"]["single_files"]),
         assembly_txt=config["single_meryl_dbs"]["assembly_txt_file"]
@@ -63,7 +80,7 @@ rule single_meryl_dbs:
             a.write(assembly_string)
 
         for assem in assembly_files:
-            with gzip.open(assem, "rt") as f:
+            with open(assem, "rt") as f:
                 genome = f.read().splitlines()
             genome_len = 0
             for line in genome:
@@ -102,52 +119,53 @@ rule run_merqury:
         subprocess.run("$MERQURY/merqury.sh meryl_merged_files " + assembly_string + " output", shell=True, check=True)
 
 # clean up merqury outputs
-rule clean_merqury:
+rule clean_merqury_outputs:
     input:
         merqury_output=rules.run_merqury.output.output_dir
     shell:
         "mv output.* completeness.stats *.gz {input.merqury_output} && rm -rf *.gz*"
 
 # build isolate JSONS from assembly-stats
-rule isolate_attributes:
+rule extract_assembly_stats:
     input:
-        rules.retrieve_assembly_stats.output
+        entrez_stats=rules.retrieve_assembly_stats.output,
+        genome_files=rules.unzip_genomes.output
     output:
-        'isolate_attributes/isolateAttributes.json'
+        'extracted_assembly_stats/isolateAttributes.json'
     params:
-        index=config['isolate_attributes']['index_no'],
+        index=config['extract_assembly_stats']['index_no'],
         threads=config['n_cpu']
     shell:
-       'python isolate_attributes-runner.py -a {input} -i {params.index} -o {output} --threads {params.threads}'
+       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output} --threads {params.threads}'
 
 # build gene JSONS from GFF and sequence files
-rule feature_extract:
+rule extract_genes:
     input:
-        annotations=rules.retrieve_annotations.output,
-        genomes=rules.retrieve_genomes.output,
-        isolateJson=rules.isolate_attributes.output,
+        annotations=rules.unzip_annotations.output,
+        genomes=rules.unzip_genomes.output,
+        isolateJson=rules.extract_assembly_stats.output,
     output:
-        "isolate_genes/allGenes.json"
+        "extracted_genes/allGenes.json"
     params:
-        index=config['feature_extract']['index_no'],
+        index=config['extract_genes']['index_no'],
         threads=config['n_cpu']
     shell:
-       'python feature_extract-runner.py -s {input.genomes} -g {input.annotations} -j {input.isolateJson} -i {params.index} -o {output} --threads {params.threads}'
+       'python extract_genes-runner.py -s {input.genomes} -g {input.annotations} -j {input.isolateJson} -i {params.index} -o {output} --threads {params.threads}'
 
 # append isolate attributes to elasticsearch index
 rule index_isolate_attributes:
     input:
-        attribute_file=rules.isolate_attributes.output,
-        feature_file=rules.feature_extract.output
+        attribute_file=rules.extract_assembly_stats.output,
+        feature_file=rules.extract_genes.output
     params:
         index=config['index_isolate_attributes']['index'],
     shell:
        'python index_isolate_attributes-runner.py -f {input.attribute_file} -i {params.index} -g {input.feature_file}'
 
-# build COBS index of gene sequences from the output of feature_extract
+# build COBS index of gene sequences from the output of extract_genes
 rule index_gene_sequences:
     input:
-        rules.feature_extract.output
+        rules.extract_genes.output
     output:
         directory("index_genes")
     params:
@@ -157,10 +175,10 @@ rule index_gene_sequences:
     shell:
        'python index_gene_features-runner.py -t {params.index_type} -f {input} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
 
-# build COBS index of gene sequences from the output of feature_extract
+# build COBS index of gene sequences from the output of extract_genes
 rule index_assembly_sequences:
     input:
-        rules.retrieve_genomes.output
+        rules.unzip_genomes.output
     output:
         directory("index_assemblies")
     params:

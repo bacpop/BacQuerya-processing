@@ -136,6 +136,10 @@ genome_browser/
 retrieved_genomes/
 retrieved_annotations/
 retrieved_assemblies/
+unzipped_genomes/
+unzipped_annotations/
+extracted_genes/
+extracted_assembly_stats/
 meryl_single_files/
 meryl_merged_files/
 merqury_output/

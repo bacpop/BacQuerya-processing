@@ -18,3 +18,4 @@ dependencies:
   - merqury
   - meryl
   - pp-sketchlib
+  - assembly_stats #https://github.com/MikeTrizna/assembly_stats

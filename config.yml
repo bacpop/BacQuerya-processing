@@ -25,17 +25,17 @@ merge_single_meryl_dbs:
 run_merqury:
   merqury_output: merqury_output
 
-# options for isolate_attributes
-isolate_attributes:
+# options for extract_assembly_stats
+extract_assembly_stats:
   index_no: 0
 
-# options for feature_extract
-feature_extract:
+# options for extract_genes
+extract_genes:
   index_no: 0
 
 # options for index_isolate_attributes
 index_isolate_attributes:
-  index: python_isolate_index3
+  index: python_isolate_index4
 
 # options for index_gene_features
 index_sequences:

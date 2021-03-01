@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Append isolate features to locally hosted elasticsearch index
+Append isolate assembly stats to locally hosted elasticsearch index
 """
 from elasticsearch import Elasticsearch
 import json
@@ -14,7 +14,7 @@ def get_options():
 
     description = 'Index isolate json'
     parser = argparse.ArgumentParser(description=description,
-                                        prog='index_isolate_features')
+                                        prog='index_isolate_attributes')
     io_opts = parser.add_argument_group('input')
     io_opts.add_argument("-f",
                         "--featureJSON",
@@ -32,7 +32,7 @@ def get_options():
                         "--feature-file",
                         dest="feature_file",
                         required=True,
-                        help='file of all genes output by feature_extract',
+                        help='file of all genes output by extract_genes',
                         type=str)
     args = parser.parse_args()
     return (args)
@@ -57,7 +57,7 @@ def main():
     for line in doc_list:
         try:
             response = client.index(index = args.index,
-                                    id = line["index"],
+                                    id = line["isolate_index"],
                                     body = line)
         except:
             sys.stderr.write('\nIssue indexing isolate: ' + line['isolateName'] + '\n')

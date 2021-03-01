@@ -32,8 +32,8 @@ subprocess.run("python ../extract_entrez_information-runner.py -s test_accession
 
 # extract attributes from assembly stats
 sys.stderr.write("\nCoverting Assembly stats to JSON strings\n")
-subprocess.run("python ../isolate_attributes-runner.py -a test_files -i 0 -o test_attributes/isolateFeatures.json --threads 3", shell=True, check=True)
+subprocess.run("python ../extract_assembly_stats-runner.py -a test_files -i 0 -o test_attributes/isolateFeatures.json --threads 3", shell=True, check=True)
 
 # extract features from entries
 sys.stderr.write("\nCoverting GFF files to JSON strings\n")
-subprocess.run("python ../feature_extract-runner.py -s test_files -g test_files -j test_attributes/isolateFeatures.json -o test_features/allGenes.json --threads 3", shell=True, check=True)
+subprocess.run("python ../extract_genes-runner.py -s test_files -g test_files -j test_attributes/isolateFeatures.json -o test_features/allGenes.json --threads 3", shell=True, check=True)

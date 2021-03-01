@@ -1,9 +1,8 @@
 """
-Build a searcheable COBS index from the output of feature_extract
+Build a searcheable COBS index from the output of extract_genes
 """
 import cobs_index as cobs
 import glob
-import gzip
 from joblib import Parallel, delayed
 import json
 import os
@@ -31,7 +30,7 @@ def get_options():
                         "--input-file",
                         dest="input_file",
                         required=False,
-                        help='file of all genetic sequences output by feature_extract (required for type=gene)',
+                        help='file of all genetic sequences output by extract_genes (required for type=gene)',
                         type=str)
     io_opts.add_argument("-d",
                         "--input-dir",
@@ -79,7 +78,7 @@ def write_gene_files(gene_dict, temp_dir):
 
 def write_assembly_files(assembly_file, temp_dir):
     """Write assembly sequences to individual files"""
-    with gzip.open(assembly_file, "rt") as f:
+    with open(assembly_file, "r") as f:
         assembly_sequence = f.read()
     assembly_basename = os.path.basename(assembly_file).replace(".gz", ".txt")
     with open(os.path.join(temp_dir, assembly_basename), "w") as o:

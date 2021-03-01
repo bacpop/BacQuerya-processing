@@ -9,7 +9,6 @@ from Bio.Seq import Seq
 from joblib import Parallel, delayed
 import json
 import glob
-import gzip
 import os
 import sys
 from tqdm import tqdm
@@ -20,7 +19,7 @@ def get_options():
 
     description = 'Extract features from gff and sequence files'
     parser = argparse.ArgumentParser(description=description,
-                                        prog='feature_extract')
+                                        prog='extract_genes')
     io_opts = parser.add_argument_group('input')
     io_opts.add_argument("-s",
                         "--sequences",
@@ -38,7 +37,7 @@ def get_options():
                         "--isolate-json",
                         dest="isolate_json",
                         required=True,
-                        help="json of all isolate attributes output by isolate_attributes",
+                        help="json of all isolate attributes output by extract_assembly_stats",
                         type=str)
     io_opts.add_argument("-o",
                         "--output",
@@ -67,11 +66,11 @@ def GFF_to_JSON(gff_file, seq_dir):
     feature_list = []
     in_seq_file = os.path.basename(gff_file.replace(".gff.gz", ".fna.gz"))
     in_seq_file = os.path.join(seq_dir, in_seq_file)
-    in_seq_handle = gzip.open(in_seq_file,'rt')
+    in_seq_handle = open(in_seq_file,'r')
     seq_dict = SeqIO.to_dict(SeqIO.parse(in_seq_handle, "fasta"))
     in_seq_handle.close()
 
-    in_handle = gzip.open(gff_file,'rt')
+    in_handle = open(gff_file,'r')
 
     for rec in GFF.parse(in_handle, base_dict=seq_dict):
         sequence_record = rec.seq
