@@ -111,11 +111,11 @@ def postSeqResult():
         sequence_dict = request.json
         query_sequence = sequence_dict['searchTerm']
         # search for uploaded sequence in COBS index
-        index_name = "sequence_index/20_index.cobs_compact"
+        index_name = "index_genes/31_index.cobs_compact"
         index = cobs.Search(index_name)
         result = index.search(query_sequence, threshold = 0.8)
         # load metadata for identified sequences
-        with open("isolate_genes/allIsolates.json") as f:
+        with open("extracted_genes/allIsolates.json") as f:
             geneJSON = f.read()
         gene_dicts_list = json.loads(geneJSON)
         gene_dicts_list = gene_dicts_list["information"]
@@ -134,7 +134,7 @@ def postSeqResult():
         response = {"resultMetrics" : result_metrics}
     return jsonify(response)
 
-@app.route('/assembly', methods=['POST'])
+@app.route('/species', methods=['POST'])
 @cross_origin()
 def analyseAssembly():
     if request.method == 'POST':
@@ -166,6 +166,23 @@ def analyseAssembly():
         for i, (ref, query) in enumerate(names):
             sys.stdout.write("\t".join([query, ref, str(distMat[i,0]), str(distMat[i,1])]) + "\n")
         return jsonify({"test": "response"})
+
+@app.route('/assembly', methods=['POST'])
+@cross_origin()
+def searchAssemblyIndex():
+    if request.method == "POST":
+        query_dir = "uploaded_assembly"
+        if not os.path.exists(query_dir):
+            os.mkdir(query_dir)
+        uploaded_file = request.files['file']
+        uploaded_file.save(os.path.join(query_dir, 'query_file.txt'))
+        with open(os.path.join(query_dir, 'query_file.txt'), "w") as f:
+            sequence = f.read()
+        # search for uploaded assembly in COBS index
+        index_name = "index_assemblies/31_index.cobs_compact"
+        index = cobs.Search(index_name)
+        result = index.search(query_sequence, threshold = 0.8)
+        return jsonify({"result" : result})
 
 if __name__ == "__main__":
     app.secret_key = os.urandom(24)

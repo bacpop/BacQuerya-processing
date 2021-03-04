@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-This script uses Biopython ENTREZ to retrieve and download metadata for reads of interest and output as a json.
+This script uses Biopython ENTREZ to retrieve and download information of interest available through NCBI.
 """
 from Bio import Entrez
 from joblib import Parallel, delayed
+import json
 import os
 import sys
 import subprocess
@@ -15,15 +16,15 @@ def get_options():
 
     import argparse
 
-    description = 'Download information of interest from NCBI'
+    description = 'Download reads of interest by accession ID'
     parser = argparse.ArgumentParser(description=description,
-                                        prog='entrez_extract')
+                                        prog='extract_entrez_reads')
     io_opts = parser.add_argument_group('input')
     io_opts.add_argument("-s",
                         "--search_term",
                         dest="accessions",
                         required=True,
-                        help='file of sequences to download. One line per entry. Specify accessions of interest or "genus species" for all accessions.',
+                        help='file of accessions for metadata download. One line per entry.',
                         type=str)
     io_opts.add_argument("-o",
                         "--output",
@@ -36,14 +37,6 @@ def get_options():
                         dest="email",
                         required=True,
                         help="specify email for entrez access",
-                        type=str)
-    io_opts.add_argument("-a",
-                        "--attributes",
-                        dest="attrs",
-                        required=False,
-                        help="specify attributes to download",
-                        default="genome",
-                        choices=['genome', 'annotation', 'assembly-report', 'assembly-stats'],
                         type=str)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
@@ -60,39 +53,25 @@ def get_options():
     args = parser.parse_args()
     return (args)
 
-def translate_attr(attribute):
-    """Determine attribute suffixes for download from NCBI"""
-    attr_dict = {'genome': ['_genomic.fna.gz', '.fna.gz'],
-                'annotation':['_genomic.gff.gz', '.gff.gz'],
-                'assembly-report':['_assembly_report.txt', '_assembly_report.txt'],
-                'assembly-stats':['_assembly_stats.txt', '_assembly_stats.txt']}
-    entrez_attribute = attr_dict[attribute][0]
-    attribute_suffix = attr_dict[attribute][1]
-    return entrez_attribute, attribute_suffix
 
-def download_entries(cleaned_accession,
-                    entrez_attribute,
-                    attribute_suffix,
-                    email,
-                    number):
+def download_metadata(cleaned_accession,
+                      email,
+                      number,
+                      output_dir):
     """Download the attribute for accessions of interest using Biopython Entrez"""
     failed_accessions = []
     Entrez.email = email
-    handle = Entrez.read(Entrez.esearch(db="assembly", term=cleaned_accession, retmax = number))
+    handle = Entrez.read(Entrez.esearch(db="sra", term=cleaned_accession, retmax = number))
     assembly_ids = handle['IdList']
     try:
-        esummary_handle = Entrez.esummary(db="assembly", id=assembly_ids[0], report="full")
+        esummary_handle = Entrez.esummary(db="biosample", id=assembly_ids[0], report="full")
         esummary_record = Entrez.read(esummary_handle, validate = False)
-        url = esummary_record['DocumentSummarySet']['DocumentSummary'][0]['FtpPath_RefSeq']
-        # search in GenBank if no RefSeq entry found
-        if url == '':
-            url = esummary_record['DocumentSummarySet']['DocumentSummary'][0]['FtpPath_GenBank']
-        label = os.path.basename(url)
-        attribute_link = os.path.join(url,label + entrez_attribute)
-        urllib.request.urlretrieve(attribute_link, label + attribute_suffix)
+        accession_metadata = {cleaned_accession : dict(esummary_record["DocumentSummarySet"]["DocumentSummary"][0])}
+        with open(os.path.join(output_dir, cleaned_accession + ".json"), "w") as f:
+            f.write(json.dumps(accession_metadata))
     except ValueError:
         # the requested attribute is not present
-        sys.stderr.write("The requested attribute is not present for: " + cleaned_accession)
+        sys.stderr.write("Metadata is not available for: " + cleaned_accession)
         pass
     except:
         # issue with the request. Re-requesting often solves
@@ -113,28 +92,19 @@ def main():
     for access in range(len(sample_list)):
         if not sample_list[access] == "":
             cleaned_accessions.append(sample_list[access])
-
-    entrez_attribute, attribute_suffix = translate_attr(args.attrs)
-
-    # set wd to output_dir for urllib
-    os.chdir(args.output_dir)
     job_list = [
         cleaned_accessions[i:i + args.n_cpu] for i in range(0, len(cleaned_accessions), args.n_cpu)
     ]
     for job in tqdm(job_list):
-        failed_accessions = Parallel(n_jobs=args.n_cpu)(delayed(download_entries)(access,
-                                                                                entrez_attribute,
-                                                                                attribute_suffix,
-                                                                                args.email,
-                                                                                args.number) for access in job)
+        failed_accessions = Parallel(n_jobs=args.n_cpu)(delayed(download_metadata)(access,
+                                                                                   args.email,
+                                                                                   args.number,
+                                                                                   args.output_dir) for access in job)
     failed_accessions = [failed for row in failed_accessions for failed in row]
     # ensure available attributes are downloaded for all accessions of interest
     for failed_access in failed_accessions:
-        failed = download_entries(failed_access,
-                                entrez_attribute,
-                                attribute_suffix,
-                                args.email,
-                                args.number)
+        failed = download_metadata(failed_access,
+                                   args.output_dir)
         if not len(failed) == 0:
             failed_accessions.append(failed)
     sys.exit(0)

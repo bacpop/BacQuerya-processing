@@ -128,6 +128,10 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# SRA toolkit
+sratoolkit.2.10.9-ubuntu64/
+sratoolkit.tar.gz
+
 # species files
 genome_browser/
 
@@ -136,6 +140,9 @@ genome_browser/
 retrieved_genomes/
 retrieved_annotations/
 retrieved_assemblies/
+retrieved_sras/
+retrieved_sra_metadata/
+sra_reads/
 unzipped_genomes/
 unzipped_annotations/
 extracted_genes/

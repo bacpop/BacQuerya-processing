@@ -52,6 +52,27 @@ rule retrieve_genomes:
     shell:
        'python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}'
 
+# retrieve raw reads using SRA toolkit
+rule retrieve_sra_reads:
+    input:
+        config['retrieve_sra_reads']['accession_file']
+    output:
+        directory('retrieved_sras')
+    shell:
+       'prefetch --output-directory {output} -v --option-file {input}'
+
+# retrieve sra read metadata
+rule retrieve_sra_metadata:
+    input:
+        config['retrieve_sra_reads']['accession_file']
+    output:
+        directory('retrieved_sra_metadata')
+    params:
+        email=config['extract_entrez_information']['email'],
+        threads=config['n_cpu']
+    shell:
+       'python extract_sra_metadata-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output}'
+
 # gunzip genome files
 rule unzip_genomes:
     input:
@@ -60,6 +81,15 @@ rule unzip_genomes:
         directory("unzipped_genomes")
     shell:
         "mkdir {output} && cp {input}/*.gz {output} && gunzip {output}/*.gz"
+
+# convert .sra to fastq
+rule expand_reads:
+    input:
+        rules.retrieve_sra_reads.output
+    output:
+        directory("sra_reads")
+    shell:
+        "fasterq-dump --split-files -O {output} {input}/*.sra"
 
 # build single meryl dbs
 rule single_meryl_dbs:

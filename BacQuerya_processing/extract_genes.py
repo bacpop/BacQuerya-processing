@@ -64,7 +64,7 @@ def get_options():
 def GFF_to_JSON(gff_file, seq_dir):
     """Use BCBio and SeqIO to convert isolate GFF files to JSON strings and identify the corresponding genomic sequence"""
     feature_list = []
-    in_seq_file = os.path.basename(gff_file.replace(".gff.gz", ".fna.gz"))
+    in_seq_file = os.path.basename(gff_file.replace(".gff", ".fna"))
     in_seq_file = os.path.join(seq_dir, in_seq_file)
     in_seq_handle = open(in_seq_file,'r')
     seq_dict = SeqIO.to_dict(SeqIO.parse(in_seq_handle, "fasta"))
@@ -93,7 +93,7 @@ def GFF_to_JSON(gff_file, seq_dir):
             json_features.update(qualifiers)
             feature_list.append(json_features)
     in_handle.close()
-    isolate_name = os.path.basename(gff_file).replace(".gff.gz", "")
+    isolate_name = os.path.basename(gff_file).replace(".gff", "")
     feature_dict = {"isolateName" : isolate_name.replace("_", " "),
                     "features" : feature_list}
     return feature_dict
@@ -124,7 +124,7 @@ def main():
     output_dir = os.path.dirname(args.output_file)
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
-    gffs = glob.glob(args.gffs + '/*.gff.gz')
+    gffs = glob.glob(args.gffs + '/*.gff')
 
     gff_list = [
         gffs[i:i + args.n_cpu] for i in range(0, len(gffs), args.n_cpu)

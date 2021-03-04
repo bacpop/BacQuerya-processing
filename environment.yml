@@ -19,3 +19,4 @@ dependencies:
   - meryl
   - pp-sketchlib
   - assembly_stats #https://github.com/MikeTrizna/assembly_stats
+  - sra-toolkit #https://github.com/ncbi/sra-tools/wiki/02.-Installing-SRA-Toolkit

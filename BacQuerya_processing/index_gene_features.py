@@ -80,7 +80,7 @@ def write_assembly_files(assembly_file, temp_dir):
     """Write assembly sequences to individual files"""
     with open(assembly_file, "r") as f:
         assembly_sequence = f.read()
-    assembly_basename = os.path.basename(assembly_file).replace(".gz", ".txt")
+    assembly_basename = os.path.basename(assembly_file).replace(".fna", ".txt")
     with open(os.path.join(temp_dir, assembly_basename), "w") as o:
         o.write(assembly_sequence)
 
@@ -92,13 +92,12 @@ def create_index(temp_dir, output_dir, kmer_length, fpr):
     params.false_positive_rate = fpr    # higher false positive rate -> smaller index
     cobs.compact_construct(temp_dir,
                            os.path.join(output_dir,
-                                        str(kmer_length) + "_index.cobs_compact"),
+                                str(kmer_length) + "_index.cobs_compact"),
                            index_params=params)
 
 def main():
     """Main function. Parses command line args and calls functions."""
     args = get_options()
-
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
     temp_dir = os.path.join(tempfile.mkdtemp(dir=args.output_dir), "")
@@ -115,7 +114,7 @@ def main():
             Parallel(n_jobs=args.n_cpu)(delayed(write_gene_files)(g,
                                                                   temp_dir) for g in job)
     if args.type == "assembly":
-        assembly_files_compressed = glob.glob(os.path.join(args.input_dir, "*.gz"))
+        assembly_files_compressed = glob.glob(os.path.join(args.input_dir, "*.fna"))
         job_list = [
             assembly_files_compressed[i:i + args.n_cpu] for i in range(0, len(assembly_files_compressed), args.n_cpu)
         ]

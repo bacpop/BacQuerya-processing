@@ -6,11 +6,15 @@ n_cpu: 3
 
 # options for extract_entrez_information
 extract_entrez_information:
-  accession_file: test/test_accessions.txt
+  accession_file: test/s2.txt
   email: empty
   assembly: assembly-stats
   gff: annotation
   genome: genome
+
+# options to extract sequence reads
+retrieve_sra_reads:
+  accession_file: test/single.txt
 
 # options for single_meryl_dbs
 single_meryl_dbs:
