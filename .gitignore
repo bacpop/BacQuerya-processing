@@ -140,8 +140,10 @@ genome_browser/
 retrieved_genomes/
 retrieved_annotations/
 retrieved_assemblies/
-retrieved_sras/
-retrieved_read_metadata/
+retrieved_sra_reads/
+retrieved_ena_reads/
+retrieved_sra_read_metadata/
+retrieved_ena_read_metadata/
 sra_reads/
 unzipped_genomes/
 unzipped_annotations/

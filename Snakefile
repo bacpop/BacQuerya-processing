@@ -62,22 +62,34 @@ rule retrieve_sra_reads:
        'prefetch --output-directory {output} -v --option-file {input}'
 
 # retrieve sra read metadata
-rule retrieve_read_metadata:
+rule retrieve_sra_read_metadata:
     input:
         config['extract_read_metadata']['accession_file']
     output:
-        output_dir=directory('retrieved_read_metadata'),
-        run_accessions="retrieved_read_metadata/fastq_links.txt"
+        output_dir=directory('retrieved_sra_read_metadata'),
     params:
         email=config['extract_entrez_information']['email'],
         threads=config['n_cpu']
     shell:
-       'python extract_read_metadata-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output.output_dir}'
+       'python extract_read_metadata-runner.py -s {input} -r sra -e {params.email} --threads {params.threads} -o {output.output_dir}'
+
+# retrieve ena read metadata
+rule retrieve_ena_read_metadata:
+    input:
+        config['extract_read_metadata']['accession_file']
+    output:
+        output_dir=directory('retrieved_ena_read_metadata'),
+        run_accessions="retrieved_ena_read_metadata/fastq_links.txt"
+    params:
+        email=config['extract_entrez_information']['email'],
+        threads=config['n_cpu']
+    shell:
+       'python extract_read_metadata-runner.py -s {input} -r ena -i 200 -e {params.email} --threads {params.threads} -o {output.output_dir}'
 
 # retrieve raw reads from ENA
 rule retrieve_ena_reads:
     input:
-        rules.retrieve_read_metadata.output.run_accessions
+        rules.retrieve_ena_read_metadata.output.run_accessions
     output:
         directory("retrieved_ena_reads")
     run:
@@ -176,7 +188,7 @@ rule extract_assembly_stats:
         entrez_stats=rules.retrieve_assembly_stats.output,
         genome_files=rules.unzip_genomes.output
     output:
-        'extracted_assembly_stats/isolateAttributes.json'
+        'extracted_assembly_stats/isolateAssemblyAttributes.json'
     params:
         index=config['extract_assembly_stats']['index_no'],
         threads=config['n_cpu']
@@ -201,11 +213,12 @@ rule extract_genes:
 rule index_isolate_attributes:
     input:
         attribute_file=rules.extract_assembly_stats.output,
-        feature_file=rules.extract_genes.output
+        feature_file=rules.extract_genes.output,
+        ena_metadata=rules.retrieve_ena_read_metadata.output.output_dir
     params:
         index=config['index_isolate_attributes']['index'],
     shell:
-       'python index_isolate_attributes-runner.py -f {input.attribute_file} -i {params.index} -g {input.feature_file}'
+       'python index_isolate_attributes-runner.py -f {input.attribute_file} -e {input.ena_metadata} -i {params.index} -g {input.feature_file}'
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_gene_sequences:

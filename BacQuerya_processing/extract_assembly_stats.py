@@ -93,7 +93,8 @@ def main():
     indexed_assemblies = []
     index_no = args.index_no
     for assembly in assembly_reports:
-        assigned_index = {"isolate_index": index_no, "assembly file": assembly}
+        assigned_index = {"isolate_index": index_no,
+                          "assembly file": assembly}
         index_no += 1
         indexed_assemblies.append(assigned_index)
 
