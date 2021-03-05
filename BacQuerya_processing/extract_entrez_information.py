@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-This script uses Biopython ENTREZ to retrieve and download metadata for reads of interest and output as a json.
+This script uses Biopython ENTREZ to retrieve and download information of interest available through NCBI.
 """
 from Bio import Entrez
 from joblib import Parallel, delayed

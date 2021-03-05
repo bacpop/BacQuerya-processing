@@ -141,7 +141,7 @@ retrieved_genomes/
 retrieved_annotations/
 retrieved_assemblies/
 retrieved_sras/
-retrieved_sra_metadata/
+retrieved_read_metadata/
 sra_reads/
 unzipped_genomes/
 unzipped_annotations/

@@ -55,23 +55,38 @@ rule retrieve_genomes:
 # retrieve raw reads using SRA toolkit
 rule retrieve_sra_reads:
     input:
-        config['retrieve_sra_reads']['accession_file']
+        config['extract_read_metadata']['accession_file']
     output:
-        directory('retrieved_sras')
+        directory('retrieved_sra_reads')
     shell:
        'prefetch --output-directory {output} -v --option-file {input}'
 
 # retrieve sra read metadata
-rule retrieve_sra_metadata:
+rule retrieve_read_metadata:
     input:
-        config['retrieve_sra_reads']['accession_file']
+        config['extract_read_metadata']['accession_file']
     output:
-        directory('retrieved_sra_metadata')
+        output_dir=directory('retrieved_read_metadata'),
+        run_accessions="retrieved_read_metadata/fastq_links.txt"
     params:
         email=config['extract_entrez_information']['email'],
         threads=config['n_cpu']
     shell:
-       'python extract_sra_metadata-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output}'
+       'python extract_read_metadata-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output.output_dir}'
+
+# retrieve raw reads from ENA
+rule retrieve_ena_reads:
+    input:
+        rules.retrieve_read_metadata.output.run_accessions
+    output:
+        directory("retrieved_ena_reads")
+    run:
+        with open(input[0], "r") as f:
+            run_accessions = f.read().splitlines()
+        for access in run_accessions:
+            subprocess.run("wget --directory-prefix " + output[0] + " " + access, shell=True, check=True)
+       # 'wget --directory-prefix {output} ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781.fastq.gz ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_2.fastq.gz
+    #'ascp -QT -l 300m -P33001 -i ~/.aspera/connect/etc/asperaweb_id_dsa.openssh era-fasp@fasp.sra.ebi.ac.uk:vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz {output}' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_1.fastq.gz
 
 # gunzip genome files
 rule unzip_genomes:
@@ -83,7 +98,7 @@ rule unzip_genomes:
         "mkdir {output} && cp {input}/*.gz {output} && gunzip {output}/*.gz"
 
 # convert .sra to fastq
-rule expand_reads:
+rule expand_sra_reads:
     input:
         rules.retrieve_sra_reads.output
     output:
