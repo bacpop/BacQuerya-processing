@@ -110,7 +110,10 @@ def append_gene_indices(isolate_file, all_features):
         isolate_gene_indices = []
         isolate_name = isol_features["isolateName"]
         for feature in isol_features["features"]:
-            if feature["gbkey"][0] == "Gene" or feature["gbkey"][0] == "gene":
+            if "gbkey" in feature.keys():
+                if feature["gbkey"][0] == "Gene" or feature["gbkey"][0] == "gene":
+                    isolate_gene_indices.append(feature["gene_index"])
+            elif feature["type"] == "CDS":
                 isolate_gene_indices.append(feature["gene_index"])
         isolate_dict_position = isolate_list_index.index(isolate_name)
         isolate_dict["information"][isolate_dict_position]["geneIndices"] = isolate_gene_indices
@@ -140,10 +143,19 @@ def main():
     for single_isolate in all_features:
         feature_dict_list = single_isolate["features"]
         for json_features in feature_dict_list:
-            if json_features["gbkey"][0] == "Gene" or json_features["gbkey"][0] == "gene":
-                gene_dict = {"gene":json_features["Name"][0],
-                            "sequence":json_features["sequence"],
-                            "index":index_no}
+            print(json_features)
+            if "gbkey" in json_features.keys():
+                if json_features["gbkey"][0] == "Gene" or json_features["gbkey"][0] == "gene":
+                    gene_dict = {"gene":json_features["Name"][0],
+                                "sequence":json_features["sequence"],
+                                "index":index_no}
+                    json_features["gene_index"] = index_no
+                    index_no += 1
+                    all_genes.append(gene_dict)
+            elif json_features["type"] == "CDS":
+                gene_dict = {"gene":json_features["ID"],
+                             "sequence":json_features["sequence"],
+                             "index":index_no}
                 json_features["gene_index"] = index_no
                 index_no += 1
                 all_genes.append(gene_dict)

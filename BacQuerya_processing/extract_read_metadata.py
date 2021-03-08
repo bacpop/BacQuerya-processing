@@ -134,7 +134,7 @@ def download_ENA_metadata(accession_dict,
             f.write(metadata_json)
     except:
        sys.stderr.write("Request failed for the following accession: " + cleaned_accession)
-    return fastqLinks
+    return [fastqLinks, metadata]
 
 def main():
     """Main function. Parses command line args and calls functions."""
@@ -158,14 +158,23 @@ def main():
         indexed_accessions[i:i + args.n_cpu] for i in range(0, len(indexed_accessions), args.n_cpu)
     ]
     if args.read_source == "ena":
-        fastq_links = []
+        access_data = []
         for job in tqdm(job_list):
-            fastq_links +=  Parallel(n_jobs=args.n_cpu)(delayed(download_ENA_metadata)(access,
+            access_data +=  Parallel(n_jobs=args.n_cpu)(delayed(download_ENA_metadata)(access,
                                                                                        args.output_dir) for access in job)
-        fastq_links = [link for row in fastq_links for link in row]
+        #access_data = [link for row in access_data for link in row]
+        fastq_links = []
+        metadata = []
+        for line in access_data:
+            fastq_links += line[0]
+            metadata.append(line[1])
         # write out list of run accessions
         with open(os.path.join(args.output_dir, "fastq_links.txt"), "w") as r:
             r.write("\n".join(fastq_links))
+        metadata_json = {"information" : metadata}
+        metadata_json = json.dumps(metadata_json).replace("@", "")
+        with open(os.path.join(args.output_dir, "isolateReadAttributes.json"), "w") as f:
+            f.write(metadata_json)
     if args.read_source == "sra":
         failed_accessions = []
         for job in tqdm(job_list):

@@ -79,7 +79,8 @@ rule retrieve_ena_read_metadata:
         config['extract_read_metadata']['accession_file']
     output:
         output_dir=directory('retrieved_ena_read_metadata'),
-        run_accessions="retrieved_ena_read_metadata/fastq_links.txt"
+        run_accessions="retrieved_ena_read_metadata/fastq_links.txt",
+        isolateJSON="retrieved_ena_read_metadata/isolateReadAttributes.json"
     params:
         email=config['extract_entrez_information']['email'],
         threads=config['n_cpu']
@@ -98,7 +99,6 @@ rule retrieve_ena_reads:
         for access in run_accessions:
             shell_command = "wget --directory-prefix " + output[0] + " " + access
             shell(shell_command)
-       # 'wget --directory-prefix {output} ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781.fastq.gz ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_2.fastq.gz
     #'ascp -QT -l 300m -P33001 -i ~/.aspera/connect/etc/asperaweb_id_dsa.openssh era-fasp@fasp.sra.ebi.ac.uk:vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz {output}' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_1.fastq.gz
 
 # gunzip genome files
@@ -218,6 +218,20 @@ rule extract_genes:
         isolateJson=rules.extract_assembly_stats.output,
     output:
         "extracted_genes/allGenes.json"
+    params:
+        index=config['extract_genes']['index_no'],
+        threads=config['n_cpu']
+    shell:
+       'python extract_genes-runner.py -s {input.genomes} -g {input.annotations} -j {input.isolateJson} -i {params.index} -o {output} --threads {params.threads}'
+
+# build gene JSONS from prodigal-predicted GFF and sequence files
+rule extract_predicted_genes:
+    input:
+        annotations=rules.run_prodigal.output,
+        #genomes=rules.assembled_reads.output,
+        isolateJson=rules.retrieve_ena_read_metadata.output.isolateJSON,
+    output:
+        "extracted_predicted_genes/allGenes.json"
     params:
         index=config['extract_genes']['index_no'],
         threads=config['n_cpu']
