@@ -170,19 +170,31 @@ def analyseAssembly():
 @app.route('/assembly', methods=['POST'])
 @cross_origin()
 def searchAssemblyIndex():
-    if request.method == "POST":
+    if request.files['file']:
         query_dir = "uploaded_assembly"
         if not os.path.exists(query_dir):
             os.mkdir(query_dir)
         uploaded_file = request.files['file']
         uploaded_file.save(os.path.join(query_dir, 'query_file.txt'))
-        with open(os.path.join(query_dir, 'query_file.txt'), "w") as f:
-            sequence = f.read()
+        with open(os.path.join(query_dir, 'query_file.txt'), "r") as f:
+            query_sequence = f.read()
         # search for uploaded assembly in COBS index
         index_name = "index_assemblies/31_index.cobs_compact"
         index = cobs.Search(index_name)
-        result = index.search(query_sequence, threshold = 0.8)
-        return jsonify({"result" : result})
+        query_sequence = query_sequence[:65564]
+        result = index.search(query_sequence, threshold = 0.3)
+        # calculate match proportion
+        query_length = len(query_sequence)
+        kmer_length = int(os.path.basename(index_name).split("_")[0])
+        resultList = []
+        for match in result:
+            match_count = match[0]
+            matchingIsolate = match[1]
+            match_proportion = round(match_count*100/((query_length-kmer_length)+1), 2)
+            resultList.append({"isolateName": matchingIsolate,
+                               "matchCount": match_count,
+                               "matchProportion": match_proportion})
+        return jsonify({"result" : resultList})
 
 if __name__ == "__main__":
     app.secret_key = os.urandom(24)
