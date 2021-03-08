@@ -96,7 +96,8 @@ rule retrieve_ena_reads:
         with open(input[0], "r") as f:
             run_accessions = f.read().splitlines()
         for access in run_accessions:
-            subprocess.run("wget --directory-prefix " + output[0] + " " + access, shell=True, check=True)
+            shell_command = "wget --directory-prefix " + output[0] + " " + access
+            shell(shell_command)
        # 'wget --directory-prefix {output} ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781.fastq.gz ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_2.fastq.gz
     #'ascp -QT -l 300m -P33001 -i ~/.aspera/connect/etc/asperaweb_id_dsa.openssh era-fasp@fasp.sra.ebi.ac.uk:vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz {output}' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_1.fastq.gz
 
@@ -150,7 +151,8 @@ rule single_meryl_dbs:
             best_kmer_result = best_kmer_result.splitlines()[2]
             # build meryl db for each assembly
             meryl_foldername = os.path.join(single_meryl_dir, os.path.splitext(os.path.splitext(os.path.basename(assem))[0])[0] + ".meryl")
-            subprocess.run("meryl k=" + best_kmer_result + " count output " + meryl_foldername + " " + assem, shell=True, check=True)
+            shell_command = "meryl k=" + best_kmer_result + " count output " + meryl_foldername + " " + assem
+            shell(shell_command)
 
 # merge single meryl dbs for merqury input
 rule merge_single_meryl_dbs:
@@ -173,7 +175,8 @@ rule run_merqury:
             os.mkdir(output.output_dir)
         with open(input.assembly_txt, "r") as f:
             assembly_string = f.read()
-        subprocess.run("$MERQURY/merqury.sh meryl_merged_files " + assembly_string + " output", shell=True, check=True)
+        shell_command = "$MERQURY/merqury.sh meryl_merged_files " + assembly_string + " output"
+        shell(shell_command)
 
 # clean up merqury outputs
 rule clean_merqury_outputs:
@@ -181,6 +184,18 @@ rule clean_merqury_outputs:
         merqury_output=rules.run_merqury.output.output_dir
     shell:
         "mv output.* completeness.stats *.gz {input.merqury_output} && rm -rf *.gz*"
+
+# run prodigal to predict genes in assemblies
+rule run_prodigal:
+    input:
+        rules.unzip_genomes.output
+    output:
+        directory("prodigal_predicted_annotations")
+    run:
+        assemblies = glob.glob(os.path.join(input[0], "*.fna"))
+        for assembly in assemblies:
+            output_file = os.path.join(output[0], os.path.splitext(os.path.basename(assembly))[0])
+            shell("mkdir -p {output} && prodigal -f gff -i " + assembly + " -o " + output_file + ".gff")
 
 # build isolate JSONS from assembly-stats
 rule extract_assembly_stats:

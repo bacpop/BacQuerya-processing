@@ -152,6 +152,7 @@ extracted_assembly_stats/
 meryl_single_files/
 meryl_merged_files/
 merqury_output/
+prodigal_predicted_annotations/
 logs/
 index_assemblies/
 index_genes/
