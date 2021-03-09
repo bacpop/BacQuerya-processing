@@ -8,6 +8,8 @@ import pp_sketchlib
 import sys
 from types import SimpleNamespace
 
+from paper_search import search_pubmed
+
 sys.path.insert(1, '..')
 
 # allow upload of entire assembly
@@ -195,6 +197,25 @@ def searchAssemblyIndex():
                                "matchCount": match_count,
                                "matchProportion": match_proportion})
         return jsonify({"result" : resultList})
+
+from urllib.parse import unquote
+
+@app.route('/paper', methods=['POST'])
+@cross_origin()
+def paperSearch():
+    if not request.json:
+        return "not a json post"
+    if request.json:
+        searchDict = request.json
+        searchTerm = searchDict["searchTerm"]
+        maxResults = 100
+        if searchDict["source"] == "URL":
+            maxResults = 1
+            searchTerm = unquote(searchTerm)
+        searchResult = search_pubmed(searchTerm,
+                                     "",
+                                     maxResults)
+        return jsonify({"result": searchResult})
 
 if __name__ == "__main__":
     app.secret_key = os.urandom(24)

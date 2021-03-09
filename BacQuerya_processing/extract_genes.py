@@ -143,7 +143,6 @@ def main():
     for single_isolate in all_features:
         feature_dict_list = single_isolate["features"]
         for json_features in feature_dict_list:
-            print(json_features)
             if "gbkey" in json_features.keys():
                 if json_features["gbkey"][0] == "Gene" or json_features["gbkey"][0] == "gene":
                     gene_dict = {"gene":json_features["Name"][0],
