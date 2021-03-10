@@ -128,6 +128,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# cobs
+cobs/
+
 # SRA toolkit
 sratoolkit.2.10.9-ubuntu64/
 sratoolkit.tar.gz

@@ -6,6 +6,7 @@ import glob
 from joblib import Parallel, delayed
 import json
 import os
+import re
 import shutil
 import sys
 from tqdm import tqdm
@@ -80,6 +81,7 @@ def write_assembly_files(assembly_file, temp_dir):
     """Write assembly sequences to individual files"""
     with open(assembly_file, "r") as f:
         assembly_sequence = f.read()
+    assembly_sequence = re.sub(r'[^ACTG]', '', assembly_sequence)
     assembly_basename = os.path.basename(assembly_file).replace(".fna", ".txt")
     with open(os.path.join(temp_dir, assembly_basename), "w") as o:
         o.write(assembly_sequence)

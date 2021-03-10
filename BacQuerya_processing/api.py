@@ -5,6 +5,7 @@ import h5py
 import json
 import os
 import pp_sketchlib
+import re
 import sys
 from types import SimpleNamespace
 
@@ -183,15 +184,16 @@ def searchAssemblyIndex():
         # search for uploaded assembly in COBS index
         index_name = "index_assemblies/31_index.cobs_compact"
         index = cobs.Search(index_name)
-        query_sequence = query_sequence[:65564]
-        result = index.search(query_sequence, threshold = 0.3)
+        query_sequence = re.sub(r'[^ACTG]', '', query_sequence)
+        query_sequence = query_sequence[:3000000]
+        result = index.search(query_sequence, num_results = 10)
         # calculate match proportion
         query_length = len(query_sequence)
-        kmer_length = int(os.path.basename(index_name).split("_")[0])
         resultList = []
         for match in result:
-            match_count = match[0]
-            matchingIsolate = match[1]
+            match_count = int(match.score)
+            matchingIsolate = match.doc_name
+            kmer_length = int(os.path.basename(index_name).split("_")[0])
             match_proportion = round(match_count*100/((query_length-kmer_length)+1), 2)
             resultList.append({"isolateName": matchingIsolate,
                                "matchCount": match_count,
