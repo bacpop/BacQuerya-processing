@@ -6,7 +6,7 @@ n_cpu: 3
 
 # options for extract_entrez_information
 extract_entrez_information:
-  accession_file: test/test_accessions.txt
+  accession_file: SPARC_accessions.txt
   email: empty
   assembly: assembly-stats
   gff: annotation
@@ -39,7 +39,7 @@ extract_genes:
 
 # options for index_isolate_attributes
 index_isolate_attributes:
-  index: python_isolate_index4
+  index: sparc_isolate_index
 
 # options for index_gene_features
 index_sequences:

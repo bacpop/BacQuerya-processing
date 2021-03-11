@@ -105,12 +105,15 @@ def download_ENA_metadata(accession_dict,
     urlResponse = requests.get(apiURL)
     accession_metadata = dict(xmltodict.parse(urlResponse.text))["SAMPLE_SET"]
     try:
+        run_accession = ""
         for link in accession_metadata["SAMPLE"]["SAMPLE_LINKS"]["SAMPLE_LINK"]:
-            #if link["XREF_LINK"]["DB"] == "ENA-RUN":
-                # run_accession = link["XREF_LINK"]["ID"]
+            if link["XREF_LINK"]["DB"] == "ENA-RUN":
+                run_accession = link["XREF_LINK"]["ID"]
             if link["XREF_LINK"]["DB"] == "ENA-FASTQ-FILES":
                 fastqTable = requests.get(link["XREF_LINK"]["ID"]).text.split("\t")
                 fastqLinks = fastqTable[4].split(";")
+                for fql in range(len(fastqLinks)):
+                    fastqLinks[fql] = "https://" + fastqLinks[fql]
                 accession_metadata.update({"ENA-FASTQ-FILES" : fastqLinks})
         for attribute in accession_metadata["SAMPLE"]["SAMPLE_ATTRIBUTES"]["SAMPLE_ATTRIBUTE"]:
             if attribute["TAG"] == "ENA-FIRST-PUBLIC":
@@ -120,6 +123,8 @@ def download_ENA_metadata(accession_dict,
         except:
             submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["namespace"]
         metadata = {"isolateName" : cleaned_accession,
+                    "accession" : cleaned_accession,
+                    "read_accession" : cleaned_accession,
                     "isolate_index" : index_no,
                     "Submitter" : submitter,
                     "Genome_representation" : "reads",
@@ -128,7 +133,10 @@ def download_ENA_metadata(accession_dict,
                     "Taxid" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["TAXON_ID"],
                     "BioSample" : accession_metadata["SAMPLE"]["IDENTIFIERS"]["EXTERNAL_ID"]["#text"],
                     "source" : "ENA",
+                    "sequenceURL" : accession_metadata["ENA-FASTQ-FILES"],
                     "allAttributes" : json.dumps(accession_metadata["SAMPLE"])}
+        if not run_accession == "":
+            metadata.update({"run_accession" : run_accession})
         metadata_json = json.dumps(metadata).replace("@", "")
         with open(os.path.join(output_dir, cleaned_accession + ".json"), "w") as f:
             f.write(metadata_json)
@@ -185,7 +193,7 @@ def main():
         failed_accessions = [failed for row in failed_accessions for failed in row]
         # ensure available attributes are downloaded for all accessions of interest
         for failed_access in failed_accessions:
-            failed = download_SRA_metadata(failed_access,
+            failed = download_SRA_metadata(str(failed_access),
                                            args.email,
                                            args.number,
                                            args.output_dir)

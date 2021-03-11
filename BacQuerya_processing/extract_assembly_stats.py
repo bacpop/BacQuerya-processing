@@ -60,7 +60,8 @@ def calculate_assembly_stats(genomeFile):
     scaffold_stats = calculate_stats(scaffold_lens, gc_cont)
     return contig_stats, scaffold_stats
 
-def assembly_to_JSON(assigned_index, genome_dir):
+def assembly_to_JSON(assigned_index,
+                     genome_dir):
     """Use assembly stats to extract information for elasticsearch indexing"""
     index_no = assigned_index['isolate_index']
     assembly_file = assigned_index['assembly file']
@@ -69,10 +70,14 @@ def assembly_to_JSON(assigned_index, genome_dir):
     contig_stats, scaffold_stats = calculate_assembly_stats(genome_file)
     with open(assembly_file, "r") as f:
         assembly_features = f.read().split("\n")
-    assembly_dict = {"isolateName" : isolate_name.replace("_", " "),
-                    "isolate_index" : index_no,
+    with open(assembly_file.replace("_assembly_stats.txt", "_additionalAssemblyStats.txt"), "r") as a:
+        assemblyURL = json.loads(a.read())
+    assembly_dict = {"isolateName": isolate_name.replace("_", " "),
+                    "isolate_index": index_no,
                     "contig_stats": contig_stats,
-                    "scaffold_stats": scaffold_stats}
+                    "scaffold_stats": scaffold_stats,
+                    "sequenceURL": assemblyURL["sequenceURL"],
+                    "accession": assemblyURL["accession"]}
     for line in assembly_features:
         try:
             attribute = re.search('# (.*?):', line).group(1).replace(" ", "_")
@@ -89,7 +94,6 @@ def main():
     if not os.path.exists(os.path.dirname(args.output_file)):
         os.mkdir((os.path.dirname(args.output_file)))
     assembly_reports = glob.glob(args.assemblies + '/*_assembly_stats.txt')
-
     indexed_assemblies = []
     index_no = args.index_no
     for assembly in assembly_reports:
@@ -104,7 +108,8 @@ def main():
     # parrallelise assembly feature extraction
     all_features = []
     for job in tqdm(job_list):
-        features = Parallel(n_jobs=args.n_cpu)(delayed(assembly_to_JSON)(assem, args.genomes) for assem in job)
+        features = Parallel(n_jobs=args.n_cpu)(delayed(assembly_to_JSON)(assem,
+                                                                         args.genomes) for assem in job)
         all_features += features
     with open(os.path.join(args.output_file), "w") as a:
         a.write(json.dumps({"information":all_features}))

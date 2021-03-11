@@ -8,6 +8,7 @@ import json
 import glob
 import os
 import sys
+from tqdm import tqdm
 
 def get_options():
 
@@ -66,13 +67,12 @@ def main():
         doc_list += dict_doc['information']
     # index ENA read features
     if args.ena_dir:
-        ena_metadata_files = glob.glob(args.ena_dir + "/*.json")
-        for metadata_file in ena_metadata_files:
-            with open(metadata_file, "r") as f:
-                enaString = f.read()
+        ena_metadata_file = os.path.join(args.ena_dir, "isolateReadAttributes.json")
+        with open(ena_metadata_file, "r") as f:
+            enaString = f.read()
             enaJSON = json.loads(enaString)
-            doc_list.append(enaJSON)
-    for line in doc_list:
+            doc_list += enaJSON["information"]
+    for line in tqdm(doc_list):
         try:
             response = client.index(index = args.index,
                                     id = line["isolate_index"],

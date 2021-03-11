@@ -5,6 +5,7 @@ This script uses Biopython ENTREZ to retrieve and download information of intere
 """
 from Bio import Entrez
 from joblib import Parallel, delayed
+import json
 import os
 import sys
 import subprocess
@@ -88,6 +89,11 @@ def download_entries(cleaned_accession,
         if url == '':
             url = esummary_record['DocumentSummarySet']['DocumentSummary'][0]['FtpPath_GenBank']
         label = os.path.basename(url)
+        if entrez_attribute == "_assembly_stats.txt":
+            sequenceLinks = {"accession": cleaned_accession,
+                             "sequenceURL": url.replace("ftp://", "https://") + "/" + label + "_genomic.fna.gz"}
+            with open(label + "_additionalAssemblyStats.txt", "w") as a:
+                a.write(json.dumps(sequenceLinks))
         attribute_link = os.path.join(url,label + entrez_attribute)
         urllib.request.urlretrieve(attribute_link, label + attribute_suffix)
     except ValueError:
@@ -122,19 +128,19 @@ def main():
         cleaned_accessions[i:i + args.n_cpu] for i in range(0, len(cleaned_accessions), args.n_cpu)
     ]
     for job in tqdm(job_list):
-        failed_accessions = Parallel(n_jobs=args.n_cpu)(delayed(download_entries)(access,
-                                                                                entrez_attribute,
-                                                                                attribute_suffix,
-                                                                                args.email,
-                                                                                args.number) for access in job)
+        failed_accessions = Parallel(n_jobs=args.n_cpu)(delayed(download_entries)(str(access),
+                                                                                  entrez_attribute,
+                                                                                  attribute_suffix,
+                                                                                  args.email,
+                                                                                  args.number) for access in job)
     failed_accessions = [failed for row in failed_accessions for failed in row]
     # ensure available attributes are downloaded for all accessions of interest
     for failed_access in failed_accessions:
-        failed = download_entries(failed_access,
-                                entrez_attribute,
-                                attribute_suffix,
-                                args.email,
-                                args.number)
+        failed = download_entries(str(failed_access),
+                                  entrez_attribute,
+                                  attribute_suffix,
+                                  args.email,
+                                  args.number)
         if not len(failed) == 0:
             failed_accessions.append(failed)
     sys.exit(0)
