@@ -239,13 +239,15 @@ rule extract_genes:
         annotations=rules.unzip_annotations.output,
         genomes=rules.unzip_genomes.output,
         isolateJson=rules.extract_assembly_stats.output,
+        #graphDir=rules.run_panaroo.output
+        graphDir="panaroo_merged_output"
     output:
         "extracted_genes/allGenes.json"
     params:
         index=config['extract_genes']['index_no'],
         threads=config['n_cpu']
     shell:
-       'python extract_genes-runner.py -s {input.genomes} -g {input.annotations} -j {input.isolateJson} -i {params.index} -o {output} --threads {params.threads}'
+       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.isolateJson} -i {params.index} -o {output} --threads {params.threads}'
 
 # build gene JSONS from prodigal-predicted GFF and sequence files
 rule extract_predicted_genes:

@@ -37,9 +37,12 @@ def load_metrics(match_count,
                 if int(feature["gene_index"]) == index:
                     match_proportion = round(match_count*100/((query_length-kmer_length)+1), 2)
                     result_metrics = {"isolateName": isolate,
-                                    "geneName": feature["Name"][0],
-                                    "numberMatching": match_proportion,
-                                    "gene_index": index}
+                                      "geneName": feature["Name"][0],
+                                      "numberMatching": match_proportion,
+                                      "gene_index": index.
+                                      "panarooNames": feature["panarooNames"],
+                                      "panarooDescriptions": feature["panarooDescriptions"],
+                                      "panarooFrequency": features["panarooFrequency"]}
     return result_metrics
 
 def constructQueryDB(q_file, query_db):

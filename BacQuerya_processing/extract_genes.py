@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 This script uses GFF and Sequence parsing to convert GFF files to json strings and extract gene names and sequences for COBS indexing.
+Cannot currently deal with refound genes identified by Panaroo.
 """
 from BCBio import GFF
 from Bio import SeqIO
@@ -9,6 +10,7 @@ from Bio.Seq import Seq
 from joblib import Parallel, delayed
 import json
 import glob
+import networkx as nx
 import os
 import sys
 from tqdm import tqdm
@@ -27,11 +29,17 @@ def get_options():
                         required=True,
                         help='directory of genomic sequences',
                         type=str)
-    io_opts.add_argument("-g",
+    io_opts.add_argument("-a",
                         "--gffs",
                         dest="gffs",
                         required=True,
                         help="directory of annotations in gff format",
+                        type=str)
+    io_opts.add_argument("-g",
+                        "--graph-dir",
+                        dest="graph_dir",
+                        required=True,
+                        help="directory of Panaroo graph",
                         type=str)
     io_opts.add_argument("-j",
                         "--isolate-json",
@@ -61,7 +69,26 @@ def get_options():
     args = parser.parse_args()
     return (args)
 
-def GFF_to_JSON(gff_file, seq_dir):
+def generate_library(graph_dir):
+    """Extract all newly annotated/identified genes from panaroo graph and update geneJSON"""
+    G = nx.read_gml(os.path.join(graph_dir, "final_graph.gml"))
+    num_isolates = len(G.graph["isolateNames"])
+    updated_genes = []
+    name_set = set()
+    for node in tqdm(G._node):
+        y = G._node[node]
+        frequency = round((len(y["members"])/num_isolates)*100, 1)
+        if not y["description"] == "":
+            name_set.add(y["name"])
+            gene_names = y["name"].split("~~~")
+            updated_genes.append({"geneName" : gene_names, "description" : y["description"].split(";"), "geneFrequency": frequency})
+        else:
+            name_set.add(y["name"])
+            gene_names = y["name"].split("~~~")
+            updated_genes.append({"geneName" : gene_names, "description" : ["hypothetical protein"], "geneFrequency": frequency})
+    return updated_genes
+
+def GFF_to_JSON(gff_file, seq_dir, updated_annotations):
     """Use BCBio and SeqIO to convert isolate GFF files to JSON strings and identify the corresponding genomic sequence"""
     feature_list = []
     in_seq_file = os.path.basename(gff_file.replace(".gff", ".fna"))
@@ -90,6 +117,14 @@ def GFF_to_JSON(gff_file, seq_dir):
                             "sequence":feature_sequence,
                             "sequenceLength":len(feature_sequence)}
             qualifiers = f.qualifiers
+            if "gene" in qualifiers.keys():
+                geneName = qualifiers["gene"][0]
+                for annot in updated_annotations:
+                    if geneName in annot["geneName"]:
+                        panaroo_dict = {"panarooNames": annot["geneName"],
+                                        "panarooDescriptions": annot["description"],
+                                        "panarooFrequency": annot["geneFrequency"]}
+                        json_features.update(panaroo_dict)
             json_features.update(qualifiers)
             feature_list.append(json_features)
     in_handle.close()
@@ -106,7 +141,7 @@ def append_gene_indices(isolate_file, all_features):
     isolate_list_index = []
     for isol_name in isolate_dict["information"]:
         isolate_list_index.append(isol_name["isolateName"])
-    for isol_features in all_features:
+    for isol_features in tqdm(all_features):
         isolate_gene_indices = []
         isolate_name = isol_features["isolateName"]
         for feature in isol_features["features"]:
@@ -127,6 +162,7 @@ def main():
     output_dir = os.path.dirname(args.output_file)
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
+    updated_annotations = generate_library(args.graph_dir)
     gffs = glob.glob(args.gffs + '/*.gff')
 
     gff_list = [
@@ -137,7 +173,8 @@ def main():
     all_genes = []
     for gff in tqdm(gff_list):
         features = Parallel(n_jobs=args.n_cpu)(delayed(GFF_to_JSON)(g,
-                                                                    args.sequences) for g in gff)
+                                                                    args.sequences,
+                                                                    updated_annotations) for g in gff)
         all_features += features
     index_no = args.index_no
     for single_isolate in all_features:
