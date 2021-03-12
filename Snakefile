@@ -277,7 +277,8 @@ rule index_isolate_attributes:
 # build COBS index of gene sequences from the output of extract_genes
 rule index_gene_sequences:
     input:
-        rules.extract_genes.output
+        geneJSON=rules.extract_genes.output,
+        graph_dir="panaroo_merged_output"
     output:
         directory("index_genes")
     params:
@@ -285,7 +286,7 @@ rule index_gene_sequences:
         threads=config['n_cpu'],
         index_type=config['index_sequences']['gene_type']
     shell:
-       'python index_gene_features-runner.py -t {params.index_type} -f {input} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
+       'python index_gene_features-runner.py -t {params.index_type} -f {input.geneJSON} -g {input.graph_dir} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_assembly_sequences:

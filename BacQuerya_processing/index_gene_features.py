@@ -5,6 +5,7 @@ import cobs_index as cobs
 import glob
 from joblib import Parallel, delayed
 import json
+import networkx as nx
 import os
 import re
 import shutil
@@ -33,6 +34,12 @@ def get_options():
                         required=False,
                         help='file of all genetic sequences output by extract_genes (required for type=gene)',
                         type=str)
+    io_opts.add_argument("-g",
+                        "--graph-dir",
+                        dest="graph_dir",
+                        required=False,
+                        help='directory of graph output by panaroo (required for type=gene and --all-genes=False)',
+                        type=str)
     io_opts.add_argument("-d",
                         "--input-dir",
                         dest="input_dir",
@@ -55,6 +62,11 @@ def get_options():
                         help="false positive rate for index. Greater fpr means smaller index (default = 0.01).",
                         default=0.01,
                         type=float)
+    io_opts.add_argument("--all-genes",
+                        dest="all_genes",
+                        help="construct index from all genes in input annotations",
+                        action='store_true',
+                        default=False)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
                         required=False,
@@ -75,6 +87,13 @@ def write_gene_files(gene_dict, temp_dir):
     gene_index = str(gene_dict["index"])
     gene_sequence = gene_dict["sequence"]
     with open(os.path.join(temp_dir, gene_index + ".txt"), "w") as g:
+        g.write(gene_sequence)
+
+def write_panaroo_gene_files(feature, temp_dir):
+    """Write gene sequences to individual files with panaroo COG name as filename"""
+    gene_name = feature["geneName"]
+    gene_sequence = feature["sequence"]
+    with open(os.path.join(temp_dir, gene_name + ".txt"), "w") as g:
         g.write(gene_sequence)
 
 def write_assembly_files(assembly_file, temp_dir):
@@ -104,17 +123,35 @@ def main():
         os.mkdir(args.output_dir)
     temp_dir = os.path.join(tempfile.mkdtemp(dir=args.output_dir), "")
     if args.type == "gene":
-        with open(args.input_file, "r") as f:
-            gene_dicts_str = f.read()
-        gene_dicts = json.loads(gene_dicts_str)
-        gene_dicts = gene_dicts["information"]
-        job_list = [
-            gene_dicts[i:i + args.n_cpu] for i in range(0, len(gene_dicts), args.n_cpu)
-        ]
-        # parrallelise writing of gene-specific files for indexing
-        for job in tqdm(job_list):
-            Parallel(n_jobs=args.n_cpu)(delayed(write_gene_files)(g,
-                                                                  temp_dir) for g in job)
+        if args.all_genes:
+            with open(args.input_file, "r") as f:
+                gene_dicts_str = f.read()
+            gene_dicts = json.loads(gene_dicts_str)
+            gene_dicts = gene_dicts["information"]
+            job_list = [
+                gene_dicts[i:i + args.n_cpu] for i in range(0, len(gene_dicts), args.n_cpu)
+            ]
+            # parrallelise writing of gene-specific files for indexing
+            for job in tqdm(job_list):
+                Parallel(n_jobs=args.n_cpu)(delayed(write_gene_files)(g,
+                                                                    temp_dir) for g in job)
+        else:
+            # load panaroo graph and write sequence files from COG represenatives
+            G = nx.read_gml(os.path.join(args.graph_dir, "final_graph.gml"))
+            representative_sequences = []
+            for node in tqdm(G._node):
+                y = G._node[node]
+                gene_name = y["name"]
+                dna = y["dna"].split(";")
+                for seq in range(len(dna)):
+                    representative_sequences.append({"geneName": gene_name + "_" + str(seq), "sequence": dna[seq]})
+            job_list = [
+                representative_sequences[i:i + args.n_cpu] for i in range(0, len(representative_sequences), args.n_cpu)
+            ]
+            # parrallelise writing of gene-specific files for indexing
+            for job in tqdm(job_list):
+                Parallel(n_jobs=args.n_cpu)(delayed(write_panaroo_gene_files)(feature,
+                                                                              temp_dir) for feature in job)
     if args.type == "assembly":
         assembly_files_compressed = glob.glob(os.path.join(args.input_dir, "*.fna"))
         job_list = [
