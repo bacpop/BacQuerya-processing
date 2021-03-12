@@ -164,6 +164,7 @@ merqury_output/
 prodigal_predicted_annotations/
 panaroo_cleaned_annotations/
 panaroo_output/
+panaroo_merged_output/
 logs/
 index_assemblies/
 index_genes/
