@@ -24,3 +24,6 @@ dependencies:
   - ascp #https://www.ibm.com/support/knowledgecenter/SS4F2E_3.9/cli_user_linux/cli_install.html #export PATH=~/.aspera/connect/bin:$PATH
   - prodigal
   - cobs
+  - panaroo
+  - cd-hit
+  - mafft

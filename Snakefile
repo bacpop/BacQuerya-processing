@@ -197,6 +197,29 @@ rule run_prodigal:
             output_file = os.path.join(output[0], os.path.splitext(os.path.basename(assembly))[0])
             shell("mkdir -p {output} && prodigal -f gff -i " + assembly + " -o " + output_file + ".gff")
 
+# reformat annotation files for panaroo input
+rule reformat_annotations:
+    input:
+        genome_dir=rules.unzip_genomes.output,
+        annotation_dir=rules.unzip_annotations.output
+    params:
+        threads=config['n_cpu']
+    output:
+        directory("panaroo_cleaned_annotations")
+    shell:
+        "python panaroo_clean_inputs-runner.py -a {input.annotation_dir} -g {input.genome_dir} -o {output} --threads {params.threads}"
+
+# run panaroo on reformatted annotations
+rule run_panaroo:
+    input:
+        rules.reformat_annotations.output
+    params:
+        threads=config['n_cpu']
+    output:
+        directory("panaroo_output")
+    shell:
+        "panaroo -i {input}/*.gff -o {output} --clean-mode sensitive -t {params.threads}"
+
 # build isolate JSONS from assembly-stats
 rule extract_assembly_stats:
     input:

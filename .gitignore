@@ -131,6 +131,12 @@ dmypy.json
 # cobs
 cobs/
 
+# panaroo
+panaroo/
+
+# test accessions
+SPARC_accessions.txt
+
 # SRA toolkit
 sratoolkit.2.10.9-ubuntu64/
 sratoolkit.tar.gz
@@ -156,6 +162,8 @@ meryl_single_files/
 meryl_merged_files/
 merqury_output/
 prodigal_predicted_annotations/
+panaroo_cleaned_annotations/
+panaroo_output/
 logs/
 index_assemblies/
 index_genes/
