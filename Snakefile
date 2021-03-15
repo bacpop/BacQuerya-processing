@@ -226,28 +226,30 @@ rule extract_assembly_stats:
         entrez_stats=rules.retrieve_assembly_stats.output,
         genome_files=rules.unzip_genomes.output
     output:
-        'extracted_assembly_stats/isolateAssemblyAttributes.json'
+        isolateFile='extracted_assembly_stats/isolateAssemblyAttributes.json',
+        indexJSON='extracted_assembly_stats/indexIsolatePairs.json'
     params:
         index=config['extract_assembly_stats']['index_no'],
         threads=config['n_cpu']
     shell:
-       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output} --threads {params.threads}'
+       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output.isolateFile} -k {output.indexJSON} --threads {params.threads}'
 
 # build gene JSONS from GFF and sequence files
 rule extract_genes:
     input:
         annotations=rules.unzip_annotations.output,
         genomes=rules.unzip_genomes.output,
-        isolateJson=rules.extract_assembly_stats.output,
+        isolateJson=rules.extract_assembly_stats.output.isolateFile,
         #graphDir=rules.run_panaroo.output
-        graphDir="panaroo_merged_output"
+        graphDir="panaroo_merged_output",
+        isolateKeyPairs=rules.extract_assembly_stats.output.indexJSON
     output:
         "extracted_genes/allGenes.json"
     params:
         index=config['extract_genes']['index_no'],
         threads=config['n_cpu']
     shell:
-       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.isolateJson} -i {params.index} -o {output} --threads {params.threads}'
+       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.isolateJson} -k {input.isolateKeyPairs} -i {params.index} -o {output} --threads {params.threads}'
 
 # build gene JSONS from prodigal-predicted GFF and sequence files
 rule extract_predicted_genes:
@@ -299,4 +301,4 @@ rule index_assembly_sequences:
         threads=config['n_cpu'],
         index_type=config['index_sequences']['assembly_type']
     shell:
-       'python index_gene_features-runner.py -t {params.index_type} -d {input} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
+       'python index_gene_features-runner.py -t {params.index_type} -a {input} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'

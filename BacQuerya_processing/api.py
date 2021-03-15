@@ -7,6 +7,7 @@ import os
 import pp_sketchlib
 import re
 import sys
+from tqdm import tqdm
 from types import SimpleNamespace
 
 from paper_search import search_pubmed
@@ -22,28 +23,6 @@ sys.path.insert(1, '..')
 
 app = Flask(__name__)
 CORS(app, expose_headers='Authorization')
-
-def load_metrics(match_count,
-                 index,
-                 gene_dicts_list,
-                 query_length,
-                 kmer_length):
-    """Search through metadata to find corresponding index"""
-    for gene_dict in gene_dicts_list:
-        isolate = gene_dict["isolateName"]
-        feature_list = gene_dict["features"]
-        for feature in feature_list:
-            if "gene_index" in feature.keys():
-                if int(feature["gene_index"]) == index:
-                    match_proportion = round(match_count*100/((query_length-kmer_length)+1), 2)
-                    result_metrics = {"isolateName": isolate,
-                                      "geneName": feature["Name"][0],
-                                      "numberMatching": match_proportion,
-                                      "gene_index": index.
-                                      "panarooNames": feature["panarooNames"],
-                                      "panarooDescriptions": feature["panarooDescriptions"],
-                                      "panarooFrequency": features["panarooFrequency"]}
-    return result_metrics
 
 def constructQueryDB(q_file, query_db):
     names = []
@@ -117,26 +96,29 @@ def postSeqResult():
         sequence_dict = request.json
         query_sequence = sequence_dict['searchTerm']
         # search for uploaded sequence in COBS index
+        sys.stderr.write("\nSearching COBS index\n")
         index_name = "index_genes/31_index.cobs_compact"
         index = cobs.Search(index_name)
         result = index.search(query_sequence, threshold = 0.8)
         # load metadata for identified sequences
-        with open("extracted_genes/allIsolates.json") as f:
+        sys.stderr.write("\nLoading gene metadata\n")
+        with open("extracted_genes/panarooPairs.json") as f:
             geneJSON = f.read()
-        gene_dicts_list = json.loads(geneJSON)
-        gene_dicts_list = gene_dicts_list["information"]
+        genePairs = json.loads(geneJSON)
         query_length = len(query_sequence)
         kmer_length = int(os.path.basename(index_name).split("_")[0])
         result_metrics = []
-        for res in result:
-            match_count = res[0]
-            index = int(res[1])
-            metrics = load_metrics(match_count,
-                                   index,
-                                   gene_dicts_list,
-                                   query_length,
-                                   kmer_length)
+        sys.stderr.write("\nExtracting metadata for COBS result\n")
+        for res in tqdm(result):
+            match_count = int(res.score)
+            index = res.doc_name.split("_")[0]
+            for k, v in genePairs.items():
+                if v == int(index):
+                    geneName = k
+            match_proportion = round(match_count*100/((query_length-kmer_length)+1), 2)
+            metrics = {"geneName": geneName, "numberMatching": match_proportion}
             result_metrics.append(metrics)
+        sys.stderr.write("\nPosting results to frontend\n")
         response = {"resultMetrics" : result_metrics}
     return jsonify(response)
 

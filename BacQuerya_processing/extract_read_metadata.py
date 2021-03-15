@@ -135,14 +135,14 @@ def download_ENA_metadata(accession_dict,
                     "source" : "ENA",
                     "sequenceURL" : accession_metadata["ENA-FASTQ-FILES"],
                     "allAttributes" : json.dumps(accession_metadata["SAMPLE"])}
+        # output isolate: index pairs
+        indexIsolatePair = {cleaned_accession: index_no}
         if not run_accession == "":
             metadata.update({"run_accession" : run_accession})
         metadata_json = json.dumps(metadata).replace("@", "")
-        with open(os.path.join(output_dir, cleaned_accession + ".json"), "w") as f:
-            f.write(metadata_json)
     except:
        sys.stderr.write("Request failed for the following accession: " + cleaned_accession)
-    return [fastqLinks, metadata]
+    return [fastqLinks, metadata, indexIsolatePair]
 
 def main():
     """Main function. Parses command line args and calls functions."""
@@ -165,6 +165,7 @@ def main():
     job_list = [
         indexed_accessions[i:i + args.n_cpu] for i in range(0, len(indexed_accessions), args.n_cpu)
     ]
+    indexIsolateDict = {}
     if args.read_source == "ena":
         access_data = []
         for job in tqdm(job_list):
@@ -176,6 +177,7 @@ def main():
         for line in access_data:
             fastq_links += line[0]
             metadata.append(line[1])
+            indexIsolateDict.update(line[2])
         # write out list of run accessions
         with open(os.path.join(args.output_dir, "fastq_links.txt"), "w") as r:
             r.write("\n".join(fastq_links))
@@ -183,6 +185,8 @@ def main():
         metadata_json = json.dumps(metadata_json).replace("@", "")
         with open(os.path.join(args.output_dir, "isolateReadAttributes.json"), "w") as f:
             f.write(metadata_json)
+        with open(os.path.join(args.output_dir, "indexIsolatePairs.json"), "w") as indexPairs:
+            indexPairs.write(json.dumps(indexIsolateDict))
     if args.read_source == "sra":
         failed_accessions = []
         for job in tqdm(job_list):

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 This script uses GFF and Sequence parsing to convert GFF files to json strings and extract gene names and sequences for COBS indexing.
-Cannot currently deal with refound genes identified by Panaroo.
+Cannot currently deal with refound genes identified by Panaroo or unnamed genes.
 """
 from BCBio import GFF
 from Bio import SeqIO
@@ -38,8 +38,15 @@ def get_options():
     io_opts.add_argument("-g",
                         "--graph-dir",
                         dest="graph_dir",
-                        required=True,
+                        required=False,
+                        default=False,
                         help="directory of Panaroo graph",
+                        type=str)
+    io_opts.add_argument("-k",
+                        "--isolate-pairs",
+                        dest="isolate_pairs",
+                        required=True,
+                        help="json file of index isolate name pairs",
                         type=str)
     io_opts.add_argument("-j",
                         "--isolate-json",
@@ -69,36 +76,54 @@ def get_options():
     args = parser.parse_args()
     return (args)
 
-def generate_library(graph_dir):
+def generate_library(graph_dir,
+                     index_no,
+                     output_dir):
     """Extract all newly annotated/identified genes from panaroo graph and update geneJSON"""
     G = nx.read_gml(os.path.join(graph_dir, "final_graph.gml"))
     num_isolates = len(G.graph["isolateNames"])
     updated_genes = []
+    panaroo_pairs = dict()
     name_set = set()
     for node in tqdm(G._node):
         y = G._node[node]
         frequency = round((len(y["members"])/num_isolates)*100, 1)
+        panaroo_pairs.update({y["name"] : index_no})
+        # if there are multiple sequ
+        sequences = y["dna"]
         if not y["description"] == "":
             name_set.add(y["name"])
             gene_names = y["name"].split("~~~")
-            updated_genes.append({"geneName" : gene_names, "description" : y["description"].split(";"), "geneFrequency": frequency})
+            updated_genes.append({"geneName" : gene_names,
+                                  "description" : y["description"].split(";"),
+                                  "geneFrequency": frequency,
+                                  "gene_index": index_no})
         else:
             name_set.add(y["name"])
             gene_names = y["name"].split("~~~")
-            updated_genes.append({"geneName" : gene_names, "description" : ["hypothetical protein"], "geneFrequency": frequency})
-    return updated_genes
+            updated_genes.append({"geneName" : gene_names,
+                                  "description" : ["hypothetical protein"],
+                                  "geneFrequency": frequency,
+                                  "gene_index": index_no})
+        index_no += 1
+    # write name, index pairs in graph for COBS indexing in index_gene_features
+    with open(os.path.join(output_dir, "panarooPairs.json"), "w") as o:
+        o.write(json.dumps(panaroo_pairs))
+    return updated_genes, index_no
 
-def GFF_to_JSON(gff_file, seq_dir, updated_annotations):
+def GFF_to_JSON(gff_file,
+                seq_dir,
+                updated_annotations,
+                isolateIndexJSON):
     """Use BCBio and SeqIO to convert isolate GFF files to JSON strings and identify the corresponding genomic sequence"""
     feature_list = []
-    in_seq_file = os.path.basename(gff_file.replace(".gff", ".fna"))
-    in_seq_file = os.path.join(seq_dir, in_seq_file)
+    label = os.path.basename(gff_file.replace(".gff", ""))
+    in_seq_file = os.path.join(seq_dir, label + ".fna")
     in_seq_handle = open(in_seq_file,'r')
     seq_dict = SeqIO.to_dict(SeqIO.parse(in_seq_handle, "fasta"))
     in_seq_handle.close()
 
     in_handle = open(gff_file,'r')
-
     for rec in GFF.parse(in_handle, base_dict=seq_dict):
         sequence_record = rec.seq
         features = rec.features
@@ -117,19 +142,22 @@ def GFF_to_JSON(gff_file, seq_dir, updated_annotations):
                             "sequence":feature_sequence,
                             "sequenceLength":len(feature_sequence)}
             qualifiers = f.qualifiers
-            if "gene" in qualifiers.keys():
-                geneName = qualifiers["gene"][0]
-                for annot in updated_annotations:
-                    if geneName in annot["geneName"]:
-                        panaroo_dict = {"panarooNames": annot["geneName"],
-                                        "panarooDescriptions": annot["description"],
-                                        "panarooFrequency": annot["geneFrequency"]}
-                        json_features.update(panaroo_dict)
+            if updated_annotations:
+                if "gene" in qualifiers.keys():
+                    geneName = qualifiers["gene"][0]
+                    for annot in updated_annotations:
+                        if geneName in annot["geneName"]:
+                            panaroo_dict = {"panarooNames": annot["geneName"],
+                                            "panarooDescriptions": annot["description"],
+                                            "panarooFrequency": annot["geneFrequency"],
+                                            "gene_index": annot["gene_index"]}
+                            json_features.update(panaroo_dict)
             json_features.update(qualifiers)
             feature_list.append(json_features)
     in_handle.close()
     isolate_name = os.path.basename(gff_file).replace(".gff", "")
     feature_dict = {"isolateName" : isolate_name.replace("_", " "),
+                    "isolate_index" : int(isolateIndexJSON[label]),
                     "features" : feature_list}
     return feature_dict
 
@@ -162,7 +190,18 @@ def main():
     output_dir = os.path.dirname(args.output_file)
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
-    updated_annotations = generate_library(args.graph_dir)
+    # load isolate-index k, v pairs
+    with open(args.isolate_pairs, "r") as isolateIndex:
+        isolateString = isolateIndex.read()
+    isolateIndexJSON = json.loads(isolateString)
+    # standardise annotations from panaroo output
+    index_no = args.index_no
+    if args.graph_dir:
+        updated_annotations, index_no = generate_library(args.graph_dir,
+                                                         index_no,
+                                                         output_dir)
+    else:
+        updated_annotations = False
     gffs = glob.glob(args.gffs + '/*.gff')
 
     gff_list = [
@@ -174,24 +213,41 @@ def main():
     for gff in tqdm(gff_list):
         features = Parallel(n_jobs=args.n_cpu)(delayed(GFF_to_JSON)(g,
                                                                     args.sequences,
-                                                                    updated_annotations) for g in gff)
+                                                                    updated_annotations,
+                                                                    isolateIndexJSON) for g in gff)
         all_features += features
     index_no = args.index_no
     for single_isolate in all_features:
         feature_dict_list = single_isolate["features"]
         for json_features in feature_dict_list:
-            if "gbkey" in json_features.keys():
+            # no panaroo standardised annotations available
+            if "gbkey" in json_features.keys() and not args.graph_dir:
                 if json_features["gbkey"][0] == "Gene" or json_features["gbkey"][0] == "gene":
                     gene_dict = {"gene":json_features["Name"][0],
                                 "sequence":json_features["sequence"],
-                                "index":index_no}
+                                "gene_index":index_no}
                     json_features["gene_index"] = index_no
                     index_no += 1
                     all_genes.append(gene_dict)
+            # panaroo standardised annotations available
+            elif "gbkey" in json_features.keys() and args.graph_dir:
+                if json_features["gbkey"][0] == "Gene" or json_features["gbkey"][0] == "gene":
+                    if "gene_index" in json_features.keys():
+                        gene_dict = {"gene":json_features["Name"][0],
+                                    "sequence":json_features["sequence"],
+                                    "gene_index":json_features["gene_index"]}
+                    else:
+                        gene_dict = {"gene":json_features["Name"][0],
+                                    "sequence":json_features["sequence"],
+                                    "gene_index":index_no}
+                        json_features["gene_index"] = index_no
+                        index_no += 1
+                    all_genes.append(gene_dict)
+            # annotations predicted by prodigal
             elif json_features["type"] == "CDS":
                 gene_dict = {"gene":json_features["ID"],
                              "sequence":json_features["sequence"],
-                             "index":index_no}
+                             "gene_index":index_no}
                 json_features["gene_index"] = index_no
                 index_no += 1
                 all_genes.append(gene_dict)

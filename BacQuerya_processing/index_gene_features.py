@@ -2,6 +2,7 @@
 Build a searcheable COBS index from the output of extract_genes
 """
 import cobs_index as cobs
+from elasticsearch import Elasticsearch
 import glob
 from joblib import Parallel, delayed
 import json
@@ -40,9 +41,9 @@ def get_options():
                         required=False,
                         help='directory of graph output by panaroo (required for type=gene and --all-genes=False)',
                         type=str)
-    io_opts.add_argument("-d",
-                        "--input-dir",
-                        dest="input_dir",
+    io_opts.add_argument("-a",
+                        "--assembly-dir",
+                        dest="assembly_dir",
                         required=False,
                         help='directory of assembly sequences (required for type=assembly)',
                         type=str)
@@ -82,18 +83,21 @@ def get_options():
     args = parser.parse_args()
     return (args)
 
+def update_IsolateElasticSearch(allIsolatesJson, index_name):
+    return
+
 def write_gene_files(gene_dict, temp_dir):
     """Write gene sequences to individual files with index as filename"""
-    gene_index = str(gene_dict["index"])
+    gene_index = str(gene_dict["gene_index"])
     gene_sequence = gene_dict["sequence"]
     with open(os.path.join(temp_dir, gene_index + ".txt"), "w") as g:
         g.write(gene_sequence)
 
 def write_panaroo_gene_files(feature, temp_dir):
     """Write gene sequences to individual files with panaroo COG name as filename"""
-    gene_name = feature["geneName"]
+    gene_index = feature["gene_index"]
     gene_sequence = feature["sequence"]
-    with open(os.path.join(temp_dir, gene_name + ".txt"), "w") as g:
+    with open(os.path.join(temp_dir, gene_index + ".txt"), "w") as g:
         g.write(gene_sequence)
 
 def write_assembly_files(assembly_file, temp_dir):
@@ -123,6 +127,7 @@ def main():
         os.mkdir(args.output_dir)
     temp_dir = os.path.join(tempfile.mkdtemp(dir=args.output_dir), "")
     if args.type == "gene":
+        input_dir = os.path.dirname(args.input_file)
         if args.all_genes:
             with open(args.input_file, "r") as f:
                 gene_dicts_str = f.read()
@@ -134,17 +139,22 @@ def main():
             # parrallelise writing of gene-specific files for indexing
             for job in tqdm(job_list):
                 Parallel(n_jobs=args.n_cpu)(delayed(write_gene_files)(g,
-                                                                    temp_dir) for g in job)
+                                                                      temp_dir) for g in job)
         else:
             # load panaroo graph and write sequence files from COG represenatives
             G = nx.read_gml(os.path.join(args.graph_dir, "final_graph.gml"))
+            with open(os.path.join(input_dir, "panarooPairs.json"), "r") as jsonFile:
+                pairString = jsonFile.read()
+            pairs = json.loads(pairString)
+            panarooPairsUpdated = []
             representative_sequences = []
             for node in tqdm(G._node):
                 y = G._node[node]
                 gene_name = y["name"]
                 dna = y["dna"].split(";")
+                gene_index = pairs[y["name"]]
                 for seq in range(len(dna)):
-                    representative_sequences.append({"geneName": gene_name + "_" + str(seq), "sequence": dna[seq]})
+                    representative_sequences.append({"gene_index": str(gene_index) + "_" + str(seq), "sequence": dna[seq]})
             job_list = [
                 representative_sequences[i:i + args.n_cpu] for i in range(0, len(representative_sequences), args.n_cpu)
             ]
@@ -153,7 +163,7 @@ def main():
                 Parallel(n_jobs=args.n_cpu)(delayed(write_panaroo_gene_files)(feature,
                                                                               temp_dir) for feature in job)
     if args.type == "assembly":
-        assembly_files_compressed = glob.glob(os.path.join(args.input_dir, "*.fna"))
+        assembly_files_compressed = glob.glob(os.path.join(args.assembly_dir, "*.fna"))
         job_list = [
             assembly_files_compressed[i:i + args.n_cpu] for i in range(0, len(assembly_files_compressed), args.n_cpu)
         ]

@@ -45,6 +45,12 @@ def get_options():
                         required=True,
                         help="output file for json of isolates",
                         type=str)
+    io_opts.add_argument("-k",
+                        "--isolateKeys",
+                        dest="isolateKeys",
+                        required=True,
+                        help="output json for isolate index: names",
+                        type=str)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
                         required=False,
@@ -94,6 +100,7 @@ def main():
     if not os.path.exists(os.path.dirname(args.output_file)):
         os.mkdir((os.path.dirname(args.output_file)))
     assembly_reports = glob.glob(args.assemblies + '/*_assembly_stats.txt')
+    indexedIsolateDict = {}
     indexed_assemblies = []
     index_no = args.index_no
     for assembly in assembly_reports:
@@ -101,6 +108,7 @@ def main():
                           "assembly file": assembly}
         index_no += 1
         indexed_assemblies.append(assigned_index)
+        indexedIsolateDict.update({os.path.basename(assembly).replace("_assembly_stats.txt", "") : index_no})
 
     job_list = [
         indexed_assemblies[i:i + args.n_cpu] for i in range(0, len(indexed_assemblies), args.n_cpu)
@@ -113,6 +121,9 @@ def main():
         all_features += features
     with open(os.path.join(args.output_file), "w") as a:
         a.write(json.dumps({"information":all_features}))
+    # output isolateName and assigned index k,v pairs
+    with open(os.path.join(args.isolateKeys), "w") as a:
+        a.write(json.dumps(indexedIsolateDict))
     sys.exit(0)
 
 if __name__ == '__main__':
