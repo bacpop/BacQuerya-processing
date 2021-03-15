@@ -244,7 +244,7 @@ rule extract_genes:
         graphDir="panaroo_merged_output",
         isolateKeyPairs=rules.extract_assembly_stats.output.indexJSON
     output:
-        "extracted_genes/allGenes.json"
+        directory("extracted_genes")
     params:
         index=config['extract_genes']['index_no'],
         threads=config['n_cpu']
@@ -258,7 +258,7 @@ rule extract_predicted_genes:
         #genomes=rules.assembled_reads.output,
         isolateJson=rules.retrieve_ena_read_metadata.output.isolateJSON,
     output:
-        "extracted_predicted_genes/allGenes.json"
+        directory("extracted_genes")
     params:
         index=config['extract_genes']['index_no'],
         threads=config['n_cpu']
@@ -274,21 +274,22 @@ rule index_isolate_attributes:
     params:
         index=config['index_isolate_attributes']['index'],
     shell:
-       'python index_isolate_attributes-runner.py -f {input.attribute_file} -e {input.ena_metadata} -i {params.index} -g {input.feature_file}'
+       'python index_isolate_attributes-runner.py -f {input.attribute_file} -e {input.ena_metadata} -i {params.index} -g {input.feature_file}/allGenes.json'
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_gene_sequences:
     input:
-        geneJSON=rules.extract_genes.output,
+        input_dir=rules.extract_genes.output,
         graph_dir="panaroo_merged_output"
     output:
         directory("index_genes")
     params:
         k_mer=config['index_sequences']['kmer_length'],
         threads=config['n_cpu'],
-        index_type=config['index_sequences']['gene_type']
+        index_type=config['index_sequences']['gene_type'],
+        elasticIndex=config['index_sequences']['elasticSearchIndex']
     shell:
-       'python index_gene_features-runner.py -t {params.index_type} -f {input.geneJSON} -g {input.graph_dir} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
+       'python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g {input.graph_dir} -o {output} --kmer-length {params.k_mer} --threads {params.threads} --index {params.elasticIndex}'
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_assembly_sequences:

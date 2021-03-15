@@ -56,9 +56,9 @@ def get_options():
                         type=str)
     io_opts.add_argument("-o",
                         "--output",
-                        dest="output_file",
+                        dest="output_dir",
                         required=True,
-                        help="output file for gene json",
+                        help="output directory",
                         type=str)
     io_opts.add_argument("-i",
                         "--index-no",
@@ -78,7 +78,8 @@ def get_options():
 
 def generate_library(graph_dir,
                      index_no,
-                     output_dir):
+                     output_dir,
+                     isolateIndexJSON):
     """Extract all newly annotated/identified genes from panaroo graph and update geneJSON"""
     G = nx.read_gml(os.path.join(graph_dir, "final_graph.gml"))
     num_isolates = len(G.graph["isolateNames"])
@@ -88,6 +89,9 @@ def generate_library(graph_dir,
     for node in tqdm(G._node):
         y = G._node[node]
         frequency = round((len(y["members"])/num_isolates)*100, 1)
+        member_labels = []
+        for mem in y["members"]:
+            member_labels.append(G.graph["isolateNames"][mem])
         panaroo_pairs.update({y["name"] : index_no})
         # if there are multiple sequ
         sequences = y["dna"]
@@ -97,33 +101,34 @@ def generate_library(graph_dir,
             updated_genes.append({"geneName" : gene_names,
                                   "description" : y["description"].split(";"),
                                   "geneFrequency": frequency,
-                                  "gene_index": index_no})
+                                  "gene_index": index_no,
+                                  "members": member_labels})
         else:
             name_set.add(y["name"])
             gene_names = y["name"].split("~~~")
             updated_genes.append({"geneName" : gene_names,
                                   "description" : ["hypothetical protein"],
                                   "geneFrequency": frequency,
-                                  "gene_index": index_no})
+                                  "gene_index": index_no,
+                                  "members": member_labels})
         index_no += 1
     # write name, index pairs in graph for COBS indexing in index_gene_features
     with open(os.path.join(output_dir, "panarooPairs.json"), "w") as o:
         o.write(json.dumps(panaroo_pairs))
     return updated_genes, index_no
 
-def GFF_to_JSON(gff_file,
-                seq_dir,
-                updated_annotations,
-                isolateIndexJSON):
+def build_gene_jsons(gff_file,
+                     seq_dir,
+                     updated_annotations,
+                     isolateIndexJSON):
     """Use BCBio and SeqIO to convert isolate GFF files to JSON strings and identify the corresponding genomic sequence"""
-    feature_list = []
     label = os.path.basename(gff_file.replace(".gff", ""))
     in_seq_file = os.path.join(seq_dir, label + ".fna")
     in_seq_handle = open(in_seq_file,'r')
     seq_dict = SeqIO.to_dict(SeqIO.parse(in_seq_handle, "fasta"))
     in_seq_handle.close()
-
     in_handle = open(gff_file,'r')
+    json_feature_list = []
     for rec in GFF.parse(in_handle, base_dict=seq_dict):
         sequence_record = rec.seq
         features = rec.features
@@ -135,31 +140,32 @@ def GFF_to_JSON(gff_file,
                 feature_sequence = str(sequence_record[start : end])
             elif strand == -1:
                 feature_sequence = str(sequence_record[start : end].reverse_complement())
-            json_features = {"type":f.type,
-                            "location": {"strand":strand,
-                                        "start":start,
-                                        "end":end},
-                            "sequence":feature_sequence,
-                            "sequenceLength":len(feature_sequence)}
             qualifiers = f.qualifiers
-            if updated_annotations:
-                if "gene" in qualifiers.keys():
-                    geneName = qualifiers["gene"][0]
-                    for annot in updated_annotations:
-                        if geneName in annot["geneName"]:
-                            panaroo_dict = {"panarooNames": annot["geneName"],
-                                            "panarooDescriptions": annot["description"],
-                                            "panarooFrequency": annot["geneFrequency"],
-                                            "gene_index": annot["gene_index"]}
-                            json_features.update(panaroo_dict)
+            isolate_index = isolateIndexJSON[label]
+            json_features = {"type":f.type,
+                             "strand":strand,
+                             "start":start,
+                             "end":end,
+                             "sequence":feature_sequence,
+                             "sequenceLength":len(feature_sequence),
+                             "isolateName": label,
+                             "isolateIndex": isolate_index}
             json_features.update(qualifiers)
-            feature_list.append(json_features)
+            if "gene" in qualifiers.keys() and updated_annotations:
+                geneName = qualifiers["gene"][0]
+                for annot in updated_annotations:
+                    if geneName in annot["geneName"]:
+                        member_labels = annot["members"]
+                        panaroo_dict = {"panarooNames": annot["geneName"],
+                                        "panarooDescriptions": annot["description"],
+                                        "panarooFrequency": annot["geneFrequency"],
+                                        "gene_index": annot["gene_index"],
+                                        "combined_index": str(isolate_index) + "_" + str(annot["gene_index"]),
+                                        "foundIn_labels": member_labels}
+                        json_features.update(panaroo_dict)
+            json_feature_list.append(json_features)
     in_handle.close()
-    isolate_name = os.path.basename(gff_file).replace(".gff", "")
-    feature_dict = {"isolateName" : isolate_name.replace("_", " "),
-                    "isolate_index" : int(isolateIndexJSON[label]),
-                    "features" : feature_list}
-    return feature_dict
+    return json_feature_list
 
 def append_gene_indices(isolate_file, all_features):
     """Add indices of all genes within the isolate to the isolate attribute json"""
@@ -172,13 +178,12 @@ def append_gene_indices(isolate_file, all_features):
     for isol_features in tqdm(all_features):
         isolate_gene_indices = []
         isolate_name = isol_features["isolateName"]
-        for feature in isol_features["features"]:
-            if "gbkey" in feature.keys():
-                if feature["gbkey"][0] == "Gene" or feature["gbkey"][0] == "gene":
-                    isolate_gene_indices.append(feature["gene_index"])
-            elif feature["type"] == "CDS":
-                isolate_gene_indices.append(feature["gene_index"])
-        isolate_dict_position = isolate_list_index.index(isolate_name)
+        if "gbkey" in isol_features.keys():
+            if isol_features["gbkey"][0] == "Gene" or isol_features["gbkey"][0] == "gene":
+                isolate_gene_indices.append(isol_features["gene_index"])
+        elif isol_features["type"] == "CDS":
+            isolate_gene_indices.append(isol_features["gene_index"])
+        isolate_dict_position = isolate_list_index.index(isolate_name.replace("_", " "))
         isolate_dict["information"][isolate_dict_position]["geneIndices"] = isolate_gene_indices
     with open(isolate_file, "w") as o:
         o.write(json.dumps(isolate_dict))
@@ -187,9 +192,8 @@ def main():
     """Main function. Parses command line args and calls functions."""
     args = get_options()
 
-    output_dir = os.path.dirname(args.output_file)
-    if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
+    if not os.path.exists(args.output_dir):
+        os.mkdir(args.output_dir)
     # load isolate-index k, v pairs
     with open(args.isolate_pairs, "r") as isolateIndex:
         isolateString = isolateIndex.read()
@@ -197,13 +201,15 @@ def main():
     # standardise annotations from panaroo output
     index_no = args.index_no
     if args.graph_dir:
+        sys.stderr.write('\nLoading Panaroo graph\n')
         updated_annotations, index_no = generate_library(args.graph_dir,
                                                          index_no,
-                                                         output_dir)
+                                                         args.output_dir,
+                                                         isolateIndexJSON)
     else:
         updated_annotations = False
     gffs = glob.glob(args.gffs + '/*.gff')
-
+    sys.stderr.write('\nConverting annotation files to JSONs\n')
     gff_list = [
         gffs[i:i + args.n_cpu] for i in range(0, len(gffs), args.n_cpu)
     ]
@@ -211,52 +217,56 @@ def main():
     all_features = []
     all_genes = []
     for gff in tqdm(gff_list):
-        features = Parallel(n_jobs=args.n_cpu)(delayed(GFF_to_JSON)(g,
-                                                                    args.sequences,
-                                                                    updated_annotations,
-                                                                    isolateIndexJSON) for g in gff)
+        features = Parallel(n_jobs=args.n_cpu)(delayed(build_gene_jsons)(g,
+                                                                         args.sequences,
+                                                                         updated_annotations,
+                                                                         isolateIndexJSON) for g in gff)
+        #features = Parallel(n_jobs=args.n_cpu)(delayed(GFF_to_JSON)(g,
+                                                                #    args.sequences,
+                                                                #    updated_annotations,
+                                                                #    isolateIndexJSON) for g in gff)
         all_features += features
-    index_no = args.index_no
-    for single_isolate in all_features:
-        feature_dict_list = single_isolate["features"]
-        for json_features in feature_dict_list:
-            # no panaroo standardised annotations available
-            if "gbkey" in json_features.keys() and not args.graph_dir:
-                if json_features["gbkey"][0] == "Gene" or json_features["gbkey"][0] == "gene":
+    all_features = [feat for row in all_features for feat in row]
+    for json_features in all_features:
+        # no panaroo standardised annotations available
+        if "gbkey" in json_features.keys() and not args.graph_dir:
+            if json_features["gbkey"][0] == "Gene" or json_features["gbkey"][0] == "gene":
+                gene_dict = {"gene":json_features["Name"][0],
+                            "sequence":json_features["sequence"],
+                            "gene_index":index_no}
+                json_features["gene_index"] = index_no
+                index_no += 1
+                all_genes.append(gene_dict)
+        # panaroo standardised annotations available
+        elif "gbkey" in json_features.keys() and args.graph_dir:
+            if json_features["gbkey"][0] == "Gene" or json_features["gbkey"][0] == "gene":
+                if "gene_index" in json_features.keys():
+                    gene_dict = {"gene":json_features["Name"][0],
+                                "sequence":json_features["sequence"],
+                                "gene_index":json_features["gene_index"]}
+                else:
                     gene_dict = {"gene":json_features["Name"][0],
                                 "sequence":json_features["sequence"],
                                 "gene_index":index_no}
                     json_features["gene_index"] = index_no
+                    json_features["combined_index"] = str(json_features["isolateIndex"]) + "_" + str(index_no)
                     index_no += 1
-                    all_genes.append(gene_dict)
-            # panaroo standardised annotations available
-            elif "gbkey" in json_features.keys() and args.graph_dir:
-                if json_features["gbkey"][0] == "Gene" or json_features["gbkey"][0] == "gene":
-                    if "gene_index" in json_features.keys():
-                        gene_dict = {"gene":json_features["Name"][0],
-                                    "sequence":json_features["sequence"],
-                                    "gene_index":json_features["gene_index"]}
-                    else:
-                        gene_dict = {"gene":json_features["Name"][0],
-                                    "sequence":json_features["sequence"],
-                                    "gene_index":index_no}
-                        json_features["gene_index"] = index_no
-                        index_no += 1
-                    all_genes.append(gene_dict)
-            # annotations predicted by prodigal
-            elif json_features["type"] == "CDS":
-                gene_dict = {"gene":json_features["ID"],
-                             "sequence":json_features["sequence"],
-                             "gene_index":index_no}
-                json_features["gene_index"] = index_no
-                index_no += 1
                 all_genes.append(gene_dict)
+        # annotations predicted by prodigal
+        elif json_features["type"] == "CDS":
+            gene_dict = {"gene":json_features["ID"],
+                            "sequence":json_features["sequence"],
+                            "gene_index":index_no}
+            json_features["gene_index"] = index_no
+            index_no += 1
+            all_genes.append(gene_dict)
     # add gene indices to isolate jsons
+    sys.stderr.write('\nAdding gene indices to isolate assembly JSONs\n')
     append_gene_indices(args.isolate_json,
                         all_features)
-    with open(os.path.join(output_dir, "allIsolates.json"), "w") as a:
+    with open(os.path.join(args.output_dir, "allIsolates.json"), "w") as a:
         a.write(json.dumps({"information":all_features}))
-    with open(args.output_file, "w") as n:
+    with open(os.path.join(args.output_dir, "allGenes.json"), "w") as n:
         n.write(json.dumps({"information":all_genes}))
     sys.exit(0)
 

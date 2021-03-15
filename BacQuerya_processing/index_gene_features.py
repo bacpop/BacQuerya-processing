@@ -1,5 +1,6 @@
 """
 Build a searcheable COBS index from the output of extract_genes
+- cannot index genes without indices because they are not in panaroo graph
 """
 import cobs_index as cobs
 from elasticsearch import Elasticsearch
@@ -29,11 +30,11 @@ def get_options():
                         help="index assembly files or gene sequences",
                         choices=['assembly', 'gene'],
                         type=str)
-    io_opts.add_argument("-f",
-                        "--input-file",
-                        dest="input_file",
+    io_opts.add_argument("-i",
+                        "--input-dir",
+                        dest="input_dir",
                         required=False,
-                        help='file of all genetic sequences output by extract_genes (required for type=gene)',
+                        help='directory output by extract_genes (required for type=gene)',
                         type=str)
     io_opts.add_argument("-g",
                         "--graph-dir",
@@ -68,6 +69,11 @@ def get_options():
                         help="construct index from all genes in input annotations",
                         action='store_true',
                         default=False)
+    io_opts.add_argument("--index",
+                        dest="index_name",
+                        required=True,
+                        help="index to create/append to",
+                        type=str)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
                         required=False,
@@ -83,20 +89,24 @@ def get_options():
     args = parser.parse_args()
     return (args)
 
-def update_IsolateElasticSearch(allIsolatesJson, index_name):
-    return
+def elasticsearch_isolates(allIsolatesJson,
+                           index_name):
+    client = Elasticsearch("localhost:9200")
+    if client.ping():
+        sys.stderr.write('\nConnected to ES client\n')
+    else:
+        sys.stderr.write('\nCould not connect to ES client!\n')
+    # iterate through features
+    for isolate in tqdm(allIsolatesJson):
+        if "combined_index" in isolate.keys():
+            response = client.index(index = index_name,
+                                    id = isolate["combined_index"],
+                                    body = isolate)
 
 def write_gene_files(gene_dict, temp_dir):
     """Write gene sequences to individual files with index as filename"""
     gene_index = str(gene_dict["gene_index"])
     gene_sequence = gene_dict["sequence"]
-    with open(os.path.join(temp_dir, gene_index + ".txt"), "w") as g:
-        g.write(gene_sequence)
-
-def write_panaroo_gene_files(feature, temp_dir):
-    """Write gene sequences to individual files with panaroo COG name as filename"""
-    gene_index = feature["gene_index"]
-    gene_sequence = feature["sequence"]
     with open(os.path.join(temp_dir, gene_index + ".txt"), "w") as g:
         g.write(gene_sequence)
 
@@ -127,9 +137,17 @@ def main():
         os.mkdir(args.output_dir)
     temp_dir = os.path.join(tempfile.mkdtemp(dir=args.output_dir), "")
     if args.type == "gene":
-        input_dir = os.path.dirname(args.input_file)
+        # index gene metadata in elasticsearch index
+        sys.stderr.write('\nLoading gene metadata JSON\n')
+        with open(os.path.join(args.input_dir, "allIsolates.json"), "r") as inFeatures:
+            geneString = inFeatures.read()
+        isolateGeneDicts = json.loads(geneString)["information"]
+        sys.stderr.write('\nBuilding elasticsearch index\n')
+        elasticsearch_isolates(isolateGeneDicts,
+                               args.index_name)
+        # cnstruct appropriate COBS index
         if args.all_genes:
-            with open(args.input_file, "r") as f:
+            with open(os.path.join(args.input_dir, "allGenes.json"), "r") as f:
                 gene_dicts_str = f.read()
             gene_dicts = json.loads(gene_dicts_str)
             gene_dicts = gene_dicts["information"]
@@ -141,27 +159,29 @@ def main():
                 Parallel(n_jobs=args.n_cpu)(delayed(write_gene_files)(g,
                                                                       temp_dir) for g in job)
         else:
-            # load panaroo graph and write sequence files from COG represenatives
+            # load panaroo graph and write sequence files from COG representatives
+            sys.stderr.write('\nLoading panaroo graph\n')
             G = nx.read_gml(os.path.join(args.graph_dir, "final_graph.gml"))
-            with open(os.path.join(input_dir, "panarooPairs.json"), "r") as jsonFile:
+            with open(os.path.join(args.input_dir, "panarooPairs.json"), "r") as jsonFile:
                 pairString = jsonFile.read()
             pairs = json.loads(pairString)
             panarooPairsUpdated = []
             representative_sequences = []
+            sys.stderr.write('\nWriting gene-specific files for COBS indexing\n')
             for node in tqdm(G._node):
                 y = G._node[node]
                 gene_name = y["name"]
                 dna = y["dna"].split(";")
                 gene_index = pairs[y["name"]]
                 for seq in range(len(dna)):
-                    representative_sequences.append({"gene_index": str(gene_index) + "_" + str(seq), "sequence": dna[seq]})
+                    representative_sequences.append({"gene_index": str(gene_index) + "_v" + str(seq), "sequence": dna[seq]})
             job_list = [
                 representative_sequences[i:i + args.n_cpu] for i in range(0, len(representative_sequences), args.n_cpu)
             ]
             # parrallelise writing of gene-specific files for indexing
             for job in tqdm(job_list):
-                Parallel(n_jobs=args.n_cpu)(delayed(write_panaroo_gene_files)(feature,
-                                                                              temp_dir) for feature in job)
+                Parallel(n_jobs=args.n_cpu)(delayed(write_gene_files)(feature,
+                                                                      temp_dir) for feature in job)
     if args.type == "assembly":
         assembly_files_compressed = glob.glob(os.path.join(args.assembly_dir, "*.fna"))
         job_list = [
@@ -171,6 +191,7 @@ def main():
         for job in tqdm(job_list):
             Parallel(n_jobs=args.n_cpu)(delayed(write_assembly_files)(a,
                                                                       temp_dir) for a in job)
+    sys.stderr.write('\nBuilding COBS sequence index\n')
     create_index(temp_dir,
                  args.output_dir,
                  args.kmer_length,
