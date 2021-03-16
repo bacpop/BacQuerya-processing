@@ -269,13 +269,13 @@ rule extract_predicted_genes:
 # append isolate attributes to elasticsearch index
 rule index_isolate_attributes:
     input:
-        attribute_file=rules.extract_assembly_stats.output,
+        attribute_file=rules.extract_assembly_stats.output.isolateFile,
         feature_file=rules.extract_genes.output,
         ena_metadata=rules.retrieve_ena_read_metadata.output.output_dir
     params:
         index=config['index_isolate_attributes']['index'],
     shell:
-       'python index_isolate_attributes-runner.py -f {input.attribute_file} -e {input.ena_metadata} -i {params.index} -g {input.feature_file}/allGenes.json'
+       'python index_isolate_attributes-runner.py -f {input.attribute_file} -e {input.ena_metadata} -i {params.index} -g {input.feature_file}'
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_gene_sequences:

@@ -49,8 +49,8 @@ def main():
     """Main function. Parses command line args and calls functions."""
     args = get_options()
 
-    if not os.path.isfile(args.feature_file):
-        raise AttributeError("Feature file is missing!")
+    if not os.path.exists(args.feature_file):
+        raise AttributeError("Extract genes output is missing!")
     client = Elasticsearch("localhost:9200")
     if client.ping():
         sys.stderr.write('\nConnected to ES client\n')

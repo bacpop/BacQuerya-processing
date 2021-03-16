@@ -45,5 +45,5 @@ index_isolate_attributes:
 index_sequences:
   kmer_length: 31
   gene_type: gene
-  elasticSearchIndex: sparc_project_annotations
+  elasticSearchIndex: sparc_project_genes
   assembly_type: assembly

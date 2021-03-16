@@ -49,7 +49,7 @@ def get_options():
                         "--isolateKeys",
                         dest="isolateKeys",
                         required=True,
-                        help="output json for isolate index: names",
+                        help="output json for isolate name:index",
                         type=str)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
@@ -122,7 +122,7 @@ def main():
     with open(os.path.join(args.output_file), "w") as a:
         a.write(json.dumps({"information":all_features}))
     # output isolateName and assigned index k,v pairs
-    with open(os.path.join(args.isolateKeys), "w") as a:
+    with open(args.isolateKeys, "w") as a:
         a.write(json.dumps(indexedIsolateDict))
     sys.exit(0)
 
