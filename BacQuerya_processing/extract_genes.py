@@ -7,6 +7,7 @@ Cannot currently deal with refound genes identified by Panaroo or unnamed genes.
 from BCBio import GFF
 from Bio import SeqIO
 from Bio.Seq import Seq
+from elasticsearch import Elasticsearch
 from joblib import Parallel, delayed
 import json
 import glob
@@ -14,6 +15,8 @@ import networkx as nx
 import os
 import sys
 from tqdm import tqdm
+
+from BacQuerya_processing.index_gene_features import elasticsearch_isolates
 
 def get_options():
 
@@ -67,6 +70,16 @@ def get_options():
                         help="integer value to start gene index from",
                         default=0,
                         type=int)
+    io_opts.add_argument("--elastic-index",
+                        dest="elastic",
+                        help="don't write gene json and index directly in script",
+                        action='store_true',
+                        default=False)
+    io_opts.add_argument("--index-name",
+                        dest="index_name",
+                        required=False,
+                        help="index to create/append to",
+                        type=str)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
                         required=False,
@@ -117,7 +130,79 @@ def generate_library(graph_dir,
         o.write(json.dumps(panaroo_pairs))
     return updated_genes, index_no
 
-def build_gene_jsons(gff_file,
+def build_gff_jsons(gff_file,
+                    seq_dir,
+                    isolateIndexJSON):
+    """Use BCBio and SeqIO to convert isolate GFF files to JSON strings and identify the corresponding genomic sequence"""
+    label = os.path.basename(gff_file.replace(".gff", ""))
+    in_seq_file = os.path.join(seq_dir, label + ".fna")
+    in_seq_handle = open(in_seq_file,'r')
+    seq_dict = SeqIO.to_dict(SeqIO.parse(in_seq_handle, "fasta"))
+    in_seq_handle.close()
+    in_handle = open(gff_file,'r')
+    json_feature_dicts = {}
+    json_feature_list = []
+    for rec in GFF.parse(in_handle, base_dict=seq_dict):
+        sequence_record = rec.seq
+        features = rec.features
+        for f in features:
+            qualifiers = f.qualifiers
+            if "gene" in qualifiers.keys():
+                start = int(f.location.start)
+                end = int(f.location.end)
+                strand = int(f.location.strand)
+                if strand == 1:
+                    feature_sequence = str(sequence_record[start : end])
+                elif strand == -1:
+                    feature_sequence = str(sequence_record[start : end].reverse_complement())
+                isolate_index = isolateIndexJSON[label]
+                json_features = {"type":f.type,
+                                "strand":strand,
+                                "start":start,
+                                "end":end,
+                                "sequence":feature_sequence,
+                                "sequenceLength":len(feature_sequence),
+                                "isolateName": label,
+                                "isolateIndex": isolate_index}
+                json_features.update(qualifiers)
+                json_feature_list.append(json_features)
+    json_feature_dicts.update({label : json_feature_list})
+    in_handle.close()
+    return json_feature_dicts
+
+def build_panaroo_geneJSON(node_list, isolateIndexJSON, json_feature_dicts):
+    "Build single layer JSON of genes and metadata in Panaroo graph for elasticsearch indexing"
+    node_dicts = []
+    for node in tqdm(node_list):
+        isolate_labels = node["members"]
+        isolate_indices = [isolateIndexJSON[label] for label in isolate_labels]
+        nodeName = node["geneName"]
+        gene_index = node["gene_index"]
+        isolate_sequences = []
+        isolates_annotated = []
+        for isol in isolate_labels:
+            if isol in json_feature_dicts.keys():
+                annotations = json_feature_dicts[isol]
+                for annot in annotations:
+                    if "gene" in annot.keys() and annot["gene"][0] in nodeName:
+                        isolate_sequences.append(annot["sequence"])
+                        isolates_annotated.append(annot["isolateName"])
+        panaroo_dict = {"panarooNames": nodeName,
+                        "panarooDescriptions": node["description"],
+                        "panarooFrequency": node["geneFrequency"],
+                        "gene_index": gene_index,
+                        "foundIn_indices": isolate_indices,
+                        "foundIn_labels": isolate_labels,
+                        "annotatedIn_sequences": isolate_sequences,
+                        "annotatedIn_labels": isolates_annotated}
+        node_dicts.append(panaroo_dict)
+    return node_dicts
+
+def build_single_geneJSON():
+    "Build single layer JSON of features not found in Panaroo graph for elasticsearch indexing"
+    return
+
+def build_gene_jsons_old(gff_file,
                      seq_dir,
                      updated_annotations,
                      isolateIndexJSON):
@@ -213,20 +298,21 @@ def main():
     gff_list = [
         gffs[i:i + args.n_cpu] for i in range(0, len(gffs), args.n_cpu)
     ]
-    # parrallelise feature extraction
-    all_features = []
+    # parrallelise conversion of GFF to json
     all_genes = []
+    json_feature_dicts = {}
     for gff in tqdm(gff_list):
-        features = Parallel(n_jobs=args.n_cpu)(delayed(build_gene_jsons)(g,
-                                                                         args.sequences,
-                                                                         updated_annotations,
-                                                                         isolateIndexJSON) for g in gff)
-        #features = Parallel(n_jobs=args.n_cpu)(delayed(GFF_to_JSON)(g,
-                                                                #    args.sequences,
-                                                                #    updated_annotations,
-                                                                #    isolateIndexJSON) for g in gff)
-        all_features += features
-    all_features = [feat for row in all_features for feat in row]
+        features = Parallel(n_jobs=args.n_cpu)(delayed(build_gff_jsons)(g,
+                                                                        args.sequences,
+                                                                        isolateIndexJSON) for g in gff)
+        for feature_item in features:
+            json_feature_dicts.update(feature_item)
+    sys.stderr.write('\nBuilding gene JSONs from Panaroo and annotation dicts\n')
+    node_dicts = build_panaroo_geneJSON(updated_annotations, isolateIndexJSON, json_feature_dicts)
+    # currently needed to index all genes when panaroo output is not available- will change to only features not in panaroo graph
+    all_features = []
+    for key, value in json_feature_dicts.items():
+        all_features += value
     for json_features in all_features:
         # no panaroo standardised annotations available
         if "gbkey" in json_features.keys() and not args.graph_dir:
@@ -264,10 +350,15 @@ def main():
     sys.stderr.write('\nAdding gene indices to isolate assembly JSONs\n')
     append_gene_indices(args.isolate_json,
                         all_features)
-    with open(os.path.join(args.output_dir, "allIsolates.json"), "w") as a:
-        a.write(json.dumps({"information":all_features}))
-    with open(os.path.join(args.output_dir, "allGenes.json"), "w") as n:
-        n.write(json.dumps({"information":all_genes}))
+    if not args.elastic:
+        sys.stderr.write('\nWriting gene JSON files\n')
+        with open(os.path.join(args.output_dir, "annotatedNodes.json"), "w") as n:
+            n.write(json.dumps({"information":node_dicts}))
+    else:
+        sys.stderr.write('\nBuilding Elastic Search index\n')
+        elasticsearch_isolates(node_dicts, args.index_name)
+    #with open(os.path.join(args.output_dir, "allGenes.json"), "w") as n:
+        #n.write(json.dumps({"information":all_genes}))
     sys.exit(0)
 
 if __name__ == '__main__':

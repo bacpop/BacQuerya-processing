@@ -247,9 +247,10 @@ rule extract_genes:
         directory("extracted_genes")
     params:
         index=config['extract_genes']['index_no'],
-        threads=config['n_cpu']
+        threads=config['n_cpu'],
+        index_name=config['index_sequences']['elasticSearchIndex']
     shell:
-       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.isolateJson} -k {input.isolateKeyPairs} -i {params.index} -o {output} --threads {params.threads}'
+       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.isolateJson} -k {input.isolateKeyPairs} -i {params.index} -o {output} --threads {params.threads} --elastic-index --index-name {params.index_name}'
 
 # build gene JSONS from prodigal-predicted GFF and sequence files
 rule extract_predicted_genes:

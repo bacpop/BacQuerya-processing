@@ -71,9 +71,14 @@ def get_options():
                         default=False)
     io_opts.add_argument("--index",
                         dest="index_name",
-                        required=True,
-                        help="index to create/append to",
+                        required=False,
+                        help="elasticsearch index to create/append to",
                         type=str)
+    io_opts.add_argument("--elastic-index",
+                        dest="elastic",
+                        help="don't write gene json and index directly in script",
+                        action='store_true',
+                        default=False)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
                         required=False,
@@ -98,10 +103,11 @@ def elasticsearch_isolates(allIsolatesJson,
         sys.stderr.write('\nCould not connect to ES client!\n')
     # iterate through features
     for isolate in tqdm(allIsolatesJson):
-        if "combined_index" in isolate.keys():
+        if "gene_index" in isolate.keys():
             response = client.index(index = index_name,
-                                    id = isolate["combined_index"],
-                                    body = isolate)
+                                    id = isolate["gene_index"],
+                                    body = isolate,
+                                    request_timeout=30)
 
 def write_gene_files(gene_dict, temp_dir):
     """Write gene sequences to individual files with index as filename"""
@@ -137,14 +143,13 @@ def main():
         os.mkdir(args.output_dir)
     temp_dir = os.path.join(tempfile.mkdtemp(dir=args.output_dir), "")
     if args.type == "gene":
-        # index gene metadata in elasticsearch index
-        sys.stderr.write('\nLoading gene metadata JSON\n')
-        with open(os.path.join(args.input_dir, "allIsolates.json"), "r") as inFeatures:
-            geneString = inFeatures.read()
-        isolateGeneDicts = json.loads(geneString)["information"]
-        sys.stderr.write('\nBuilding elasticsearch index\n')
-        elasticsearch_isolates(isolateGeneDicts,
-                               args.index_name)
+        if args.elastic:
+            with open(os.path.join(args.input_dir, "allIsolates.json"), "r") as inFeatures:
+                geneString = inFeatures.read()
+            isolateGeneDicts = json.loads(geneString)["information"]
+            sys.stderr.write('\nBuilding elasticsearch index\n')
+            elasticsearch_isolates(isolateGeneDicts,
+                                args.index_name)
         # cnstruct appropriate COBS index
         if args.all_genes:
             with open(os.path.join(args.input_dir, "allGenes.json"), "r") as f:
