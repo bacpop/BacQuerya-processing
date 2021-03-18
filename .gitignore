@@ -127,3 +127,45 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# cobs
+cobs/
+
+# panaroo
+panaroo/
+
+# test accessions
+SPARC_accessions.txt
+
+# SRA toolkit
+sratoolkit.2.10.9-ubuntu64/
+sratoolkit.tar.gz
+
+# species files
+genome_browser/
+
+# Snakemake outputs
+.snakemake
+retrieved_genomes/
+retrieved_annotations/
+retrieved_assemblies/
+retrieved_sra_reads/
+retrieved_ena_reads/
+retrieved_sra_read_metadata/
+retrieved_ena_read_metadata/
+sra_reads/
+unzipped_genomes/
+unzipped_annotations/
+extracted_genes/
+extracted_assembly_stats/
+meryl_single_files/
+meryl_merged_files/
+merqury_output/
+prodigal_predicted_annotations/
+panaroo_cleaned_annotations/
+panaroo_output/
+panaroo_merged_output/
+logs/
+index_assemblies/
+index_genes/
+uploaded_assembly/

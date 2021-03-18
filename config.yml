@@ -1,0 +1,49 @@
+# Location of BacQuerya_processing repository relative to the Snakefile
+BactQuerya_location: .
+
+# multiprocessing option
+n_cpu: 4
+
+# options for extract_entrez_information
+extract_entrez_information:
+  accession_file: SPARC_accessions.txt
+  email: empty
+  assembly: assembly-stats
+  gff: annotation
+  genome: genome
+
+# options to extract sequence reads
+extract_read_metadata:
+  accession_file: test/read_accessions.txt
+
+# options for single_meryl_dbs
+single_meryl_dbs:
+  single_files: meryl_single_files
+  assembly_txt_file: meryl_single_files/assembly_str.txt
+
+# options for merge_single_meryl_dbs
+merge_single_meryl_dbs:
+  merged_db_folder: meryl_merged_files
+
+# options for run_merqury
+run_merqury:
+  merqury_output: merqury_output
+
+# options for extract_assembly_stats
+extract_assembly_stats:
+  index_no: 0
+
+# options for extract_genes
+extract_genes:
+  index_no: 0
+
+# options for index_isolate_attributes
+index_isolate_attributes:
+  index: sparc_isolate_index
+
+# options for index_gene_features
+index_sequences:
+  kmer_length: 31
+  gene_type: gene
+  elasticSearchIndex: sparc_project_genes
+  assembly_type: assembly
