@@ -96,18 +96,25 @@ def get_options():
 
 def elasticsearch_isolates(allIsolatesJson,
                            index_name):
-    client = Elasticsearch("localhost:9200")
+    client = Elasticsearch()
     if client.ping():
         sys.stderr.write('\nConnected to ES client\n')
     else:
         sys.stderr.write('\nCould not connect to ES client!\n')
     # iterate through features
-    for isolate in tqdm(allIsolatesJson):
-        if "gene_index" in isolate.keys():
+    sys.stderr.write('\nIndexing CDS features\n')
+    for line in tqdm(allIsolatesJson):
+        if "gene_index" in line.keys():
+            print(line.keys())
             response = client.index(index = index_name,
-                                    id = isolate["gene_index"],
-                                    body = isolate,
+                                    id = line["gene_index"],
+                                    body = line,
                                     request_timeout=30)
+        #if "featureIndex" in line.keys():
+           # response = client.index(index = index_name,
+                                  #  id = line["featureIndex"],
+                                  #  body = line,
+                                  #  request_timeout=30)
 
 def write_gene_files(gene_dict, temp_dir):
     """Write gene sequences to individual files with index as filename"""

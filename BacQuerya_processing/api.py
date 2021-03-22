@@ -155,10 +155,11 @@ def analyseAssembly():
             sys.stdout.write("\t".join([query, ref, str(distMat[i,0]), str(distMat[i,1])]) + "\n")
         return jsonify({"test": "response"})
 
-@app.route('/assembly', methods=['POST'])
+@app.route('/assembly', methods=['GET, POST'])
 @cross_origin()
 def searchAssemblyIndex():
-    if request.files['file']:
+    if request.method == 'POST':
+        print("File uploaded!")
         query_dir = "uploaded_assembly"
         if not os.path.exists(query_dir):
             os.mkdir(query_dir)
@@ -184,6 +185,8 @@ def searchAssemblyIndex():
                                "matchCount": match_count,
                                "matchProportion": match_proportion})
         return jsonify({"result" : resultList})
+    else:
+        print("No file uploaded!")
 
 from urllib.parse import unquote
 
