@@ -96,7 +96,8 @@ def get_options():
 
 def elasticsearch_isolates(allIsolatesJson,
                            index_name):
-    client = Elasticsearch()
+    client = Elasticsearch(['https://elastic:dvEgcgQT35Z2uh2fsb4s7MgW@7cb44cafa45747448cc203805e8aeeda.uksouth.azure.elastic-cloud.com:9243'],
+                           api_key=('dy4dRngBDIOts3L216Ek','vVCJ4YfsRZqbLTQNsLSbJg'))
     if client.ping():
         sys.stderr.write('\nConnected to ES client\n')
     else:
@@ -105,7 +106,6 @@ def elasticsearch_isolates(allIsolatesJson,
     sys.stderr.write('\nIndexing CDS features\n')
     for line in tqdm(allIsolatesJson):
         if "gene_index" in line.keys():
-            print(line.keys())
             response = client.index(index = index_name,
                                     id = line["gene_index"],
                                     body = line,
