@@ -14,16 +14,15 @@ dependencies:
   - flask-cors
   - tqdm
   - elasticsearch
-  - cobs-index
   - merqury
   - meryl
   - pp-sketchlib
   - assembly_stats #https://github.com/MikeTrizna/assembly_stats
-  - sra-toolkit #https://github.com/ncbi/sra-tools/wiki/02.-Installing-SRA-Toolkit # export PATH=$PATH:$PWD/sratoolkit.2.10.9-ubuntu64/bin
+  #- sra-toolkit #https://github.com/ncbi/sra-tools/wiki/02.-Installing-SRA-Toolkit # export PATH=$PATH:$PWD/sratoolkit.2.10.9-ubuntu64/bin
   - xmltodict
-  - ascp #https://www.ibm.com/support/knowledgecenter/SS4F2E_3.9/cli_user_linux/cli_install.html #export PATH=~/.aspera/connect/bin:$PATH
+  #- ascp #https://www.ibm.com/support/knowledgecenter/SS4F2E_3.9/cli_user_linux/cli_install.html #export PATH=~/.aspera/connect/bin:$PATH
   - prodigal
-  - cobs
+  #- cobs
   - panaroo
   - cd-hit
   - mafft
