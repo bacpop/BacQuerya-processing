@@ -15,6 +15,8 @@ import sys
 from tqdm import tqdm
 import tempfile
 
+from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_API_ID, ELASTIC_API_KEY
+
 def get_options():
 
     import argparse
@@ -96,19 +98,23 @@ def get_options():
 
 def elasticsearch_isolates(allIsolatesJson,
                            index_name):
-    client = Elasticsearch()
-    if client.ping():
-        sys.stderr.write('\nConnected to ES client\n')
-    else:
-        sys.stderr.write('\nCould not connect to ES client!\n')
-    # iterate through features
+    # rate of indexing decreases substantially after about 1500 items
+    partioned_items = [
+        allIsolatesJson[i:i + 1500] for i in range(0, len(allIsolatesJson), 1500)
+        ]
     sys.stderr.write('\nIndexing CDS features\n')
-    for line in tqdm(allIsolatesJson):
-        if "gene_index" in line.keys():
-            response = client.index(index = index_name,
-                                    id = line["gene_index"],
-                                    body = line,
-                                    request_timeout=30)
+    for item in tqdm(partioned_items):
+        client = Elasticsearch([ELASTIC_API_URL],
+                                api_key=(ELASTIC_API_ID, ELASTIC_API_KEY))
+        # iterate through features
+        for line in tqdm(item):
+            if "gene_index" in line.keys():
+                client = Elasticsearch([ELASTIC_API_URL],
+                            api_key=(ELASTIC_API_ID, ELASTIC_API_KEY))
+                response = client.index(index = index_name,
+                                        id = line["gene_index"],
+                                        body = line,
+                                        request_timeout=30)
         #if "featureIndex" in line.keys():
            # response = client.index(index = index_name,
                                   #  id = line["featureIndex"],

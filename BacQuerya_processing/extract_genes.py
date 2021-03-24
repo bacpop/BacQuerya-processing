@@ -43,7 +43,7 @@ def get_options():
     io_opts.add_argument("-g",
                         "--graph-dir",
                         dest="graph_dir",
-                        required=False,
+                        required=True,
                         default=False,
                         help="directory of Panaroo graph",
                         type=str)
@@ -82,6 +82,11 @@ def get_options():
                         required=False,
                         help="index to create/append to",
                         type=str)
+    io_opts.add_argument("--biosampleJSON",
+                        dest="biosampleJSON",
+                        required=True,
+                        help="json file of biosample isolate name pairs",
+                        type=str)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
                         required=False,
@@ -95,7 +100,8 @@ def generate_library(graph_dir,
                      index_no,
                      output_dir,
                      isolateIndexJSON,
-                     threads):
+                     threads,
+                     biosampleJSON):
     """Extract all newly annotated/identified genes from panaroo graph and update geneJSON"""
     G = nx.read_gml(os.path.join(graph_dir, "final_graph.gml"))
     gene_data = pd.read_csv(os.path.join(graph_dir, "gene_data.csv"))
@@ -107,7 +113,11 @@ def generate_library(graph_dir,
         sequence = gene_data["dna_sequence"][row]
         cluster_dict = {gene_data["clustering_id"][row] : (gene_data["annotation_id"][row], sequence)}
         gene_data_json.update(cluster_dict)
-    num_isolates = len(G.graph["isolateNames"])
+    all_names = G.graph["isolateNames"]
+    num_isolates = len(all_names)
+    with open(biosampleJSON, "r") as bios:
+        label_accession_str = bios.read()
+    label_accession_pairs = json.loads(label_accession_str)
     annotationID_key_updated_genes = {}
     panaroo_pairs = dict()
     sys.stderr.write('\nExtracting node information from Panaroo graph\n')
@@ -117,8 +127,11 @@ def generate_library(graph_dir,
         member_labels = []
         gene_data_sequences = []
         annotation_ids = []
+        biosample_labels = []
         for mem in range(len(y["members"])):
-            member_labels.append(G.graph["isolateNames"][mem])
+            isol_label = G.graph["isolateNames"][mem]
+            member_labels.append(isol_label)
+            biosample_labels.append(label_accession_pairs[isol_label])
             gene_data_row = gene_data_json[y["geneIDs"].split(";")[mem]]
             member_node_sequence = gene_data_row[1]
             member_annotation_id = gene_data_row[0]
@@ -138,6 +151,7 @@ def generate_library(graph_dir,
                            "foundIn_labels": member_labels,
                            "foundIn_sequences": gene_data_sequences,
                            "foundIn_indices": isolate_indices,
+                           "foundIn_biosamples": biosample_labels,
                            "member_annotation_ids": annotation_ids}
         updated_genes.append(annotation_dict)
         for annot_ID in annotation_ids:
@@ -208,9 +222,9 @@ def append_gene_indices(isolate_file, all_features):
         isolate_gene_indices = []
         isolate_gene_names = []
         isolate_non_CDS = []
-        isolateMetadataName = isolate_dict["information"][isol_name]["isolateName"]
+        isolateMetadataName = isolate_dict["information"][isol_name]["isolateNameUnderscore"]
         for annotation_line in all_features:
-            if annotation_line["isolateName"].replace("_", " ") == isolateMetadataName:
+            if annotation_line["isolateName"] == isolateMetadataName:
                 if "panarooNames" in annotation_line.keys():
                     isolate_gene_indices.append(annotation_line["gene_index"])
                     isolate_gene_names.append(annotation_line["panarooNames"])
@@ -241,7 +255,8 @@ def main():
                                                                                          index_no,
                                                                                          args.output_dir,
                                                                                          isolateIndexJSON,
-                                                                                         args.n_cpu)
+                                                                                         args.n_cpu,
+                                                                                         args.biosampleJSON)
     else:
         annotationID_key_updated_genes = False
     gffs = glob.glob(args.gffs + '/*.gff')
