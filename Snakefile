@@ -227,12 +227,13 @@ rule extract_assembly_stats:
         genome_files=rules.unzip_genomes.output
     output:
         isolateFile='extracted_assembly_stats/isolateAssemblyAttributes.json',
-        indexJSON='extracted_assembly_stats/indexIsolatePairs.json'
+        indexJSON='extracted_assembly_stats/indexIsolatePairs.json',
+        biosampleJSON='extracted_assembly_stats/biosampleIsolatePairs.json'
     params:
         index=config['extract_assembly_stats']['index_no'],
         threads=config['n_cpu']
     shell:
-       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output.isolateFile} -k {output.indexJSON} --threads {params.threads}'
+       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output.isolateFile} -k {output.indexJSON} -b {output.biosampleJSON} --threads {params.threads}'
 
 # build gene JSONS from GFF and sequence files
 rule extract_genes:
@@ -242,7 +243,8 @@ rule extract_genes:
         isolateJson=rules.extract_assembly_stats.output.isolateFile,
         #graphDir=rules.run_panaroo.output
         graphDir="panaroo_merged_output",
-        isolateKeyPairs=rules.extract_assembly_stats.output.indexJSON
+        isolateKeyPairs=rules.extract_assembly_stats.output.indexJSON,
+        biosampleKeyPairs=rules.extract_assembly_stats.output.biosampleJSON
     output:
         directory("extracted_genes")
     params:
@@ -250,7 +252,7 @@ rule extract_genes:
         threads=config['n_cpu'],
         index_name=config['index_sequences']['elasticSearchIndex']
     shell:
-       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.isolateJson} -k {input.isolateKeyPairs} -i {params.index} -o {output} --threads {params.threads} --elastic-index --index-name {params.index_name}'
+       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.isolateJson} -k {input.isolateKeyPairs} -i {params.index} -o {output} --threads {params.threads} --elastic-index --index-name {params.index_name} --biosampleJSON {input.biosampleKeyPairs}'
 
 # build gene JSONS from prodigal-predicted GFF and sequence files
 rule extract_predicted_genes:
@@ -274,6 +276,8 @@ rule index_isolate_attributes:
         ena_metadata=rules.retrieve_ena_read_metadata.output.output_dir
     params:
         index=config['index_isolate_attributes']['index'],
+    output:
+        touch("index_isolates.done")
     shell:
        'python index_isolate_attributes-runner.py -f {input.attribute_file} -e {input.ena_metadata} -i {params.index} -g {input.feature_file}'
 
@@ -281,16 +285,18 @@ rule index_isolate_attributes:
 rule index_gene_sequences:
     input:
         input_dir=rules.extract_genes.output,
-        graph_dir="panaroo_merged_output"
+        graph_dir="panaroo_merged_output",
+        fake_input="index_isolates.done"
     output:
         directory("index_genes")
     params:
         k_mer=config['index_sequences']['kmer_length'],
         threads=config['n_cpu'],
         index_type=config['index_sequences']['gene_type'],
-        elasticIndex=config['index_sequences']['elasticSearchIndex']
+        elasticIndex=config['index_sequences']['elasticSearchIndex'],
+        elasticIsolateIndex=config['index_isolate_attributes']['index']
     shell:
-       'python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g {input.graph_dir} -o {output} --kmer-length {params.k_mer} --threads {params.threads} --index {params.elasticIndex}'
+       'python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g {input.graph_dir} -o {output} --kmer-length {params.k_mer} --threads {params.threads} --index {params.elasticIndex} --isolate-index {params.elasticIsolateIndex}'
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_assembly_sequences:

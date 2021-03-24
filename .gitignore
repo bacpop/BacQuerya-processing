@@ -144,6 +144,9 @@ sratoolkit.tar.gz
 # species files
 genome_browser/
 
+# secrets
+BacQuerya_processing/secrets.py
+
 # Snakemake outputs
 .snakemake
 retrieved_genomes/

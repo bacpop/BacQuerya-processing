@@ -51,6 +51,12 @@ def get_options():
                         required=True,
                         help="output json for isolate name:index",
                         type=str)
+    io_opts.add_argument("-b",
+                        "--biosampleKeys",
+                        dest="biosampleKeys",
+                        required=True,
+                        help="output json for isolate name:biosample",
+                        type=str)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
                         required=False,
@@ -79,11 +85,12 @@ def assembly_to_JSON(assigned_index,
     with open(assembly_file.replace("_assembly_stats.txt", "_additionalAssemblyStats.txt"), "r") as a:
         assemblyURL = json.loads(a.read())
     assembly_dict = {"isolateName": isolate_name.replace("_", " "),
-                    "isolate_index": index_no,
-                    "contig_stats": contig_stats,
-                    "scaffold_stats": scaffold_stats,
-                    "sequenceURL": assemblyURL["sequenceURL"],
-                    "accession": assemblyURL["accession"]}
+                     "isolateNameUnderscore": isolate_name,
+                     "isolate_index": index_no,
+                     "contig_stats": contig_stats,
+                     "scaffold_stats": scaffold_stats,
+                     "sequenceURL": assemblyURL["sequenceURL"],
+                     "accession": assemblyURL["accession"]}
     for line in assembly_features:
         try:
             attribute = re.search('# (.*?):', line).group(1).replace(" ", "_")
@@ -109,7 +116,7 @@ def main():
         index_no += 1
         indexed_assemblies.append(assigned_index)
         indexedIsolateDict.update({os.path.basename(assembly).replace("_assembly_stats.txt", "") : index_no})
-
+    sys.stderr.write('\nConverting assembly stat files to JSON\n')
     job_list = [
         indexed_assemblies[i:i + args.n_cpu] for i in range(0, len(indexed_assemblies), args.n_cpu)
     ]
@@ -119,11 +126,19 @@ def main():
         features = Parallel(n_jobs=args.n_cpu)(delayed(assembly_to_JSON)(assem,
                                                                          args.genomes) for assem in job)
         all_features += features
+    # get label biosample pairs for isolate URL
+    sys.stderr.write('\nWriting label : BioSample pairs\n')
+    labelBiosampleDict = {}
+    for feat in tqdm(all_features):
+        labelBiosampleDict.update({feat["isolateNameUnderscore"] : feat["BioSample"]})
     with open(os.path.join(args.output_file), "w") as a:
         a.write(json.dumps({"information":all_features}))
     # output isolateName and assigned index k,v pairs
     with open(args.isolateKeys, "w") as a:
         a.write(json.dumps(indexedIsolateDict))
+    # output isolateName and biosample accession k,v pairs
+    with open(args.biosampleKeys, "w") as b:
+        b.write(json.dumps(labelBiosampleDict))
     sys.exit(0)
 
 if __name__ == '__main__':
