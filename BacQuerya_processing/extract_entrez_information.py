@@ -141,7 +141,7 @@ def main():
     while len(successful_accessions) != len(cleaned_accessions):
         for access in cleaned_accessions:
             if not access in successful_accessions:
-                sys.stderr.write("\nRerequesting isolate: " + str(failed_access) + "\n")
+                sys.stderr.write("\nRerequesting isolate: " + str(access) + "\n")
                 success = download_entries(str(access),
                                            entrez_attribute,
                                            attribute_suffix,
@@ -149,7 +149,7 @@ def main():
                                            args.number)
                 if success != []:
                     sys.stderr.write("\nRetrieval was successful for isolate: " + str(access) + "\n")
-                    successful_accessions.add(success)
+                    successful_accessions.add(success[0])
     sys.exit(0)
 
 if __name__ == '__main__':
