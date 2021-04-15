@@ -2,7 +2,7 @@
 BactQuerya_location: .
 
 # multiprocessing option
-n_cpu: 4
+n_cpu: 3
 
 # options for extract_entrez_information
 extract_entrez_information:

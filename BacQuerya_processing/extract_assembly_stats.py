@@ -4,6 +4,7 @@
 Extract attributes from isolate-specific assembly stats and constuct a JSON for all attributes in all isolates.
 """
 from assembly_stats import read_genome, calculate_stats
+from Bio import Entrez
 from joblib import Parallel, delayed
 import json
 import glob
@@ -11,6 +12,7 @@ import os
 import re
 import sys
 from tqdm import tqdm
+import xmltodict
 
 def get_options():
 
@@ -57,6 +59,12 @@ def get_options():
                         required=True,
                         help="output json for isolate name:biosample",
                         type=str)
+    io_opts.add_argument("-e",
+                        "--email",
+                        dest="email",
+                        required=True,
+                        help="specify email for entrez access",
+                        type=str)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
                         required=False,
@@ -65,6 +73,40 @@ def get_options():
                         type=int)
     args = parser.parse_args()
     return (args)
+
+def get_biosample_metadata(biosample_accession,
+                           email):
+    "Use Biopython entrez to download metadata found in NCBI BioSample"
+    Entrez.email = email
+    handle = Entrez.read(Entrez.esearch(db="biosample", term=biosample_accession, retmax = 10))
+    assembly_ids = handle['IdList']
+    esummary_handle = Entrez.esummary(db="biosample", id=assembly_ids[0], report="full")
+    esummary_record = Entrez.read(esummary_handle, validate = False)
+    biosample_identifiers = esummary_record["DocumentSummarySet"]["DocumentSummary"][0]["Identifiers"]
+    biosample_metadata_html = esummary_record["DocumentSummarySet"]["DocumentSummary"][0]["SampleData"]
+    biosample_metadata_dict = xmltodict.parse(biosample_metadata_html)
+    biosample_metadata = {"BioSample_PublicationDate": biosample_metadata_dict["BioSample"]["@publication_date"],
+                          "BioSample_LastUpdate": biosample_metadata_dict["BioSample"]["@last_update"],
+                          "BioSample_SubmissionDate": biosample_metadata_dict["BioSample"]["@submission_date"],
+                          "BioSample_Owner": biosample_metadata_dict["BioSample"]["Owner"]["Name"],
+                          "BioSample_Status": biosample_metadata_dict["BioSample"]["Status"]["@status"]}
+    attributes = biosample_metadata_dict["BioSample"]["Attributes"]["Attribute"]
+    for attr in range(len(attributes)):
+        if attributes[attr]["@attribute_name"] == "INSDC center name":
+            biosample_metadata.update({"BioSample_INSDCCenterName" : attributes[attr]["#text"]})
+        if attributes[attr]["@attribute_name"] == "collection_date":
+            biosample_metadata.update({"BioSample_CollectionDate" : attributes[attr]["#text"]})
+        if attributes[attr]["@attribute_name"] == "geographic location (country and/or sea)":
+            biosample_metadata.update({"BioSample_CollectionLocation" : attributes[attr]["#text"]})
+        if attributes[attr]["@attribute_name"] == "host health state":
+            biosample_metadata.update({"BioSample_HostHealthState" : attributes[attr]["#text"]})
+        if attributes[attr]["@attribute_name"] == "isolation_source":
+            biosample_metadata.update({"BioSample_IsolationSource" : attributes[attr]["#text"]})
+        if attributes[attr]["@attribute_name"] == "serovar":
+            biosample_metadata.update({"BioSample_SeroVar" : attributes[attr]["#text"]})
+        if attributes[attr]["@attribute_name"] == "specific_host":
+            biosample_metadata.update({"BioSample_SpecificHost" : attributes[attr]["#text"]})
+    return biosample_metadata
 
 def calculate_assembly_stats(genomeFile):
     contig_lens, scaffold_lens, gc_cont = read_genome(genomeFile)
@@ -127,10 +169,12 @@ def main():
                                                                          args.genomes) for assem in job)
         all_features += features
     # get label biosample pairs for isolate URL
-    sys.stderr.write('\nWriting label : BioSample pairs\n')
+    sys.stderr.write('\nWriting label : BioSample pairs and extracting BioSample metadata\n')
     labelBiosampleDict = {}
     for feat in tqdm(all_features):
         labelBiosampleDict.update({feat["isolateNameUnderscore"] : feat["BioSample"]})
+        biosample_data = get_biosample_metadata(feat["BioSample"], args.email)
+        feat.update(biosample_data)
     with open(os.path.join(args.output_file), "w") as a:
         a.write(json.dumps({"information":all_features}))
     # output isolateName and assigned index k,v pairs

@@ -13,6 +13,8 @@ from tqdm import tqdm
 import requests
 import xmltodict
 
+from BacQuerya_processing.extract_assembly_stats import get_biosample_metadata
+
 def get_options():
 
     import argparse
@@ -178,6 +180,11 @@ def main():
             fastq_links += line[0]
             metadata.append(line[1])
             indexIsolateDict.update(line[2])
+        # get BioSample Metadata
+        sys.stderr.write('\nDownload BioSample metadata\n')
+        for metadata_line in tqdm(metadata):
+            biosample_metadata = get_biosample_metadata(metadata_line["BioSample"], args.email)
+            metadata_line.update(biosample_metadata)
         # write out list of run accessions
         with open(os.path.join(args.output_dir, "fastq_links.txt"), "w") as r:
             r.write("\n".join(fastq_links))

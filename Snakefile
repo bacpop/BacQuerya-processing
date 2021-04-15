@@ -231,9 +231,10 @@ rule extract_assembly_stats:
         biosampleJSON='extracted_assembly_stats/biosampleIsolatePairs.json'
     params:
         index=config['extract_assembly_stats']['index_no'],
-        threads=config['n_cpu']
+        threads=config['n_cpu'],
+        email=config['extract_entrez_information']['email']
     shell:
-       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output.isolateFile} -k {output.indexJSON} -b {output.biosampleJSON} --threads {params.threads}'
+       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output.isolateFile} -k {output.indexJSON} -b {output.biosampleJSON} -e {params.email} --threads {params.threads}'
 
 # build gene JSONS from GFF and sequence files
 rule extract_genes:
@@ -294,9 +295,8 @@ rule index_gene_sequences:
         threads=config['n_cpu'],
         index_type=config['index_sequences']['gene_type'],
         elasticIndex=config['index_sequences']['elasticSearchIndex'],
-        elasticIsolateIndex=config['index_isolate_attributes']['index']
     shell:
-       'python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g {input.graph_dir} -o {output} --kmer-length {params.k_mer} --threads {params.threads} --index {params.elasticIndex} --isolate-index {params.elasticIsolateIndex}'
+       'python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g {input.graph_dir} -o {output} --kmer-length {params.k_mer} --threads {params.threads} --elastic-index --index {params.elasticIndex}'
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_assembly_sequences:

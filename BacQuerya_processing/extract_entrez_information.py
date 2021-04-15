@@ -77,7 +77,7 @@ def download_entries(cleaned_accession,
                     email,
                     number):
     """Download the attribute for accessions of interest using Biopython Entrez"""
-    failed_accessions = []
+    successful_accessions = []
     Entrez.email = email
     handle = Entrez.read(Entrez.esearch(db="assembly", term=cleaned_accession, retmax = number))
     assembly_ids = handle['IdList']
@@ -96,15 +96,15 @@ def download_entries(cleaned_accession,
                 a.write(json.dumps(sequenceLinks))
         attribute_link = os.path.join(url,label + entrez_attribute)
         urllib.request.urlretrieve(attribute_link, label + attribute_suffix)
+        successful_accessions.append(cleaned_accession)
     except ValueError:
         # the requested attribute is not present
-        sys.stderr.write("The requested attribute is not present for: " + cleaned_accession)
-        pass
+        sys.stderr.write("\nThe requested attribute is not present for: " + cleaned_accession + "\n")
+        successful_accessions.append(cleaned_accession)
     except:
         # issue with the request. Re-requesting often solves
-        failed_accessions.append(cleaned_accession)
-        sys.stderr.write("Request failed, the following accession will be re-requested: " + cleaned_accession)
-    return failed_accessions
+        sys.stderr.write("\nRequest failed, the following accession will be re-requested: " + cleaned_accession + "\n")
+    return successful_accessions
 
 def main():
     """Main function. Parses command line args and calls functions."""
@@ -124,25 +124,31 @@ def main():
 
     # set wd to output_dir for urllib
     os.chdir(args.output_dir)
+    sys.stderr.write("\nDownloading information for " + str(len(cleaned_accessions)) + " isolates\n")
     job_list = [
         cleaned_accessions[i:i + args.n_cpu] for i in range(0, len(cleaned_accessions), args.n_cpu)
     ]
+    successful_accessions = []
     for job in tqdm(job_list):
-        failed_accessions = Parallel(n_jobs=args.n_cpu)(delayed(download_entries)(str(access),
-                                                                                  entrez_attribute,
-                                                                                  attribute_suffix,
-                                                                                  args.email,
-                                                                                  args.number) for access in job)
-    failed_accessions = [failed for row in failed_accessions for failed in row]
+        successful_accessions += Parallel(n_jobs=args.n_cpu)(delayed(download_entries)(str(access),
+                                                                                       entrez_attribute,
+                                                                                       attribute_suffix,
+                                                                                       args.email,
+                                                                                       args.number) for access in job)
     # ensure available attributes are downloaded for all accessions of interest
-    for failed_access in failed_accessions:
-        failed = download_entries(str(failed_access),
-                                  entrez_attribute,
-                                  attribute_suffix,
-                                  args.email,
-                                  args.number)
-        if not len(failed) == 0:
-            failed_accessions.append(failed)
+    successful_accessions = set(successful_accessions)
+    while len(successful_accessions) != len(cleaned_accessions):
+        for access in cleaned_accessions:
+            if not access in successful_accessions:
+                sys.stderr.write("\nRerequesting isolate: " + str(failed_access) + "\n")
+                success = download_entries(str(access),
+                                           entrez_attribute,
+                                           attribute_suffix,
+                                           args.email,
+                                           args.number)
+                if success != []:
+                    sys.stderr.write("\nRetrieval was successful for isolate: " + str(access) + "\n")
+                    successful_accessions.add(success)
     sys.exit(0)
 
 if __name__ == '__main__':
