@@ -136,6 +136,7 @@ def main():
                                                                                        args.email,
                                                                                        args.number) for access in job)
     # ensure available attributes are downloaded for all accessions of interest
+    successful_accessions = [success for row in successful_accessions for success in row]
     successful_accessions = set(successful_accessions)
     while len(successful_accessions) != len(cleaned_accessions):
         for access in cleaned_accessions:
