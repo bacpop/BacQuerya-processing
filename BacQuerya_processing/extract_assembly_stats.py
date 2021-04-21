@@ -14,6 +14,8 @@ import sys
 from tqdm import tqdm
 import xmltodict
 
+from BacQuerya_processing.secrets import ENTREZ_API_KEY
+
 def get_options():
 
     import argparse
@@ -78,6 +80,7 @@ def get_biosample_metadata(biosample_accession,
                            email):
     "Use Biopython entrez to download metadata found in NCBI BioSample"
     Entrez.email = email
+    Entrez.api_key = ENTREZ_API_KEY
     handle = Entrez.read(Entrez.esearch(db="biosample", term=biosample_accession, retmax = 10))
     assembly_ids = handle['IdList']
     esummary_handle = Entrez.esummary(db="biosample", id=assembly_ids[0], report="full")

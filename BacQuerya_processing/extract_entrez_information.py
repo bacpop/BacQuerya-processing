@@ -12,6 +12,8 @@ import subprocess
 from tqdm import tqdm
 import urllib.request
 
+from BacQuerya_processing.secrets import ENTREZ_API_KEY
+
 def get_options():
 
     import argparse
@@ -79,6 +81,7 @@ def download_entries(cleaned_accession,
     """Download the attribute for accessions of interest using Biopython Entrez"""
     successful_accessions = []
     Entrez.email = email
+    Entrez.api_key = ENTREZ_API_KEY
     handle = Entrez.read(Entrez.esearch(db="assembly", term=cleaned_accession, retmax = number))
     assembly_ids = handle['IdList']
     try:

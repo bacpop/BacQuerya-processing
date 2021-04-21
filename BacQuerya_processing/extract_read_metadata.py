@@ -14,6 +14,7 @@ import requests
 import xmltodict
 
 from BacQuerya_processing.extract_assembly_stats import get_biosample_metadata
+from BacQuerya_processing.secrets import ENTREZ_API_KEY
 
 def get_options():
 
@@ -78,6 +79,7 @@ def download_SRA_metadata(cleaned_accession,
     """Download the attribute for accessions of interest using Biopython Entrez"""
     failed_accessions = []
     Entrez.email = email
+    Entrez.api_key = ENTREZ_API_KEY
     handle = Entrez.read(Entrez.esearch(db="sra", term=cleaned_accession, retmax = number))
     assembly_ids = handle['IdList']
     try:
