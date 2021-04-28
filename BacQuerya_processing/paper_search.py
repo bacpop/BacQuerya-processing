@@ -7,11 +7,14 @@ from Bio import Entrez
 from tqdm import tqdm
 from urllib.parse import quote
 
+from BacQuerya_processing.secrets import ENTREZ_API_KEY
+
 def search_pubmed(searchTerm,
                   email,
                   number):
     """Download the attribute for accessions of interest using Biopython Entrez"""
     Entrez.email = email
+    Entrez.api_key = ENTREZ_API_KEY
     handle = Entrez.read(Entrez.esearch(db="pubmed", term=searchTerm, retmax = number))
     idList = handle["IdList"]
     searchResult = []

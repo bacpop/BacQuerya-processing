@@ -146,9 +146,11 @@ genome_browser/
 
 # secrets
 BacQuerya_processing/secrets.py
+BacQuerya_processing/secrets_public.py
 
 # Snakemake outputs
 .snakemake
+index_isolates.done
 retrieved_genomes/
 retrieved_annotations/
 retrieved_assemblies/
@@ -172,3 +174,4 @@ logs/
 index_assemblies/
 index_genes/
 uploaded_assembly/
+previous_run/

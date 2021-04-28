@@ -13,6 +13,9 @@ from tqdm import tqdm
 import requests
 import xmltodict
 
+from BacQuerya_processing.extract_assembly_stats import get_biosample_metadata
+from BacQuerya_processing.secrets import ENTREZ_API_KEY
+
 def get_options():
 
     import argparse
@@ -35,12 +38,11 @@ def get_options():
                         choices=['sra', 'ena'],
                         type=str)
     io_opts.add_argument("-i",
-                        "--index-no",
-                        dest="index_no",
-                        required=False,
-                        help="integer value to start index from",
-                        default=0,
-                        type=int)
+                        "--index-file",
+                        dest="index_file",
+                        required=True,
+                        help="JSON file containing integer value to start index from",
+                        type=str)
     io_opts.add_argument("-o",
                         "--output",
                         dest="output_dir",
@@ -76,6 +78,7 @@ def download_SRA_metadata(cleaned_accession,
     """Download the attribute for accessions of interest using Biopython Entrez"""
     failed_accessions = []
     Entrez.email = email
+    Entrez.api_key = ENTREZ_API_KEY
     handle = Entrez.read(Entrez.esearch(db="sra", term=cleaned_accession, retmax = number))
     assembly_ids = handle['IdList']
     try:
@@ -155,7 +158,9 @@ def main():
     sample_list = sample_accessions.split("\n")
     # assign isolate index number to read metadata
     indexed_accessions = []
-    index_no = args.index_no
+    with open(args.index_file, "r") as indexFile:
+        indexNoDict = json.loads(indexFile.read())
+    index_no = int(indexNoDict["isolateIndexNo"])
     for access in range(len(sample_list)):
         if not sample_list[access] == "":
             assigned_index = {"isolate_index": index_no,
@@ -178,6 +183,11 @@ def main():
             fastq_links += line[0]
             metadata.append(line[1])
             indexIsolateDict.update(line[2])
+        # get BioSample Metadata
+        sys.stderr.write('\nDownload BioSample metadata\n')
+        for metadata_line in tqdm(metadata):
+            biosample_metadata = get_biosample_metadata(metadata_line["BioSample"], args.email)
+            metadata_line.update(biosample_metadata)
         # write out list of run accessions
         with open(os.path.join(args.output_dir, "fastq_links.txt"), "w") as r:
             r.write("\n".join(fastq_links))
@@ -187,6 +197,10 @@ def main():
             f.write(metadata_json)
         with open(os.path.join(args.output_dir, "indexIsolatePairs.json"), "w") as indexPairs:
             indexPairs.write(json.dumps(indexIsolateDict))
+        # update isolate index number for subsequent runs
+        indexNoDict["isolateIndexNo"] = index_no
+        with open(args.index_file, "w") as indexFile:
+            indexFile.write(json.dumps(indexNoDict))
     if args.read_source == "sra":
         failed_accessions = []
         for job in tqdm(job_list):

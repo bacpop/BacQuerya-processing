@@ -6,7 +6,7 @@ n_cpu: 4
 
 # options for extract_entrez_information
 extract_entrez_information:
-  accession_file: SPARC_accessions.txt
+  accession_file: requested_accessions.txt
   email: empty
   assembly: assembly-stats
   gff: annotation
@@ -31,11 +31,7 @@ run_merqury:
 
 # options for extract_assembly_stats
 extract_assembly_stats:
-  index_no: 0
-
-# options for extract_genes
-extract_genes:
-  index_no: 0
+  index_file: index_values.json
 
 # options for index_isolate_attributes
 index_isolate_attributes:
