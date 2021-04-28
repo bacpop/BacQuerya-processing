@@ -66,12 +66,11 @@ def get_options():
                         help="output directory",
                         type=str)
     io_opts.add_argument("-i",
-                        "--index-no",
-                        dest="index_no",
-                        required=False,
-                        help="integer value to start gene index from",
-                        default=0,
-                        type=int)
+                        "--index-file",
+                        dest="index_file",
+                        required=True,
+                        help="JSON file containing integer value to start index from",
+                        type=str)
     io_opts.add_argument("--elastic-index",
                         dest="elastic",
                         help="don't write gene json and index directly in script",
@@ -125,7 +124,6 @@ def generate_library(graph_dir,
         y = G._node[node]
         frequency = round((len(y["members"])/num_isolates)*100, 1)
         member_labels = []
-        gene_data_sequences = []
         annotation_ids = []
         biosample_labels = []
         for mem in range(len(y["members"])):
@@ -133,9 +131,7 @@ def generate_library(graph_dir,
             member_labels.append(isol_label)
             biosample_labels.append(label_accession_pairs[isol_label])
             gene_data_row = gene_data_json[y["geneIDs"].split(";")[mem]]
-            member_node_sequence = gene_data_row[1]
             member_annotation_id = gene_data_row[0]
-            gene_data_sequences.append(member_node_sequence)
             annotation_ids.append(member_annotation_id)
         isolate_indices = [isolateIndexJSON[label] for label in member_labels]
         panaroo_pairs.update({y["name"] : index_no})
@@ -149,7 +145,6 @@ def generate_library(graph_dir,
                            "panarooFrequency": frequency,
                            "gene_index": index_no,
                            "foundIn_labels": member_labels,
-                           "foundIn_sequences": gene_data_sequences,
                            "foundIn_indices": isolate_indices,
                            "foundIn_biosamples": biosample_labels,
                            "member_annotation_ids": annotation_ids}
@@ -231,9 +226,9 @@ def append_gene_indices(isolate_file, all_features):
                 if "featureIndex" in annotation_line.keys():
                     isolate_non_CDS.append(annotation_line["featureIndex"])
         if not len(isolate_gene_names) == 0:
-            isolate_dict["information"][isol_name]["geneIndices"] = isolate_gene_indices
+            #isolate_dict["information"][isol_name]["geneIndices"] = isolate_gene_indices
             isolate_dict["information"][isol_name]["panarooNames"] = isolate_gene_names
-            isolate_dict["information"][isol_name]["nonCDSIndices"] = isolate_non_CDS
+            #isolate_dict["information"][isol_name]["nonCDSIndices"] = isolate_non_CDS
     with open(isolate_file, "w") as o:
         o.write(json.dumps(isolate_dict))
 
@@ -248,7 +243,9 @@ def main():
         isolateString = isolateIndex.read()
     isolateIndexJSON = json.loads(isolateString)
     # standardise annotations from panaroo output
-    index_no = args.index_no
+    with open(args.index_file, "r") as indexFile:
+        indexNoDict = json.loads(indexFile.read())
+    index_no = int(indexNoDict["geneIndexNo"])
     if args.graph_dir:
         sys.stderr.write('\nLoading Panaroo graph\n')
         annotationID_key_updated_genes, updated_annotations, index_no = generate_library(args.graph_dir,
@@ -289,13 +286,17 @@ def main():
     sys.stderr.write('\nAdding gene indices to isolate assembly JSONs\n')
     append_gene_indices(args.isolate_json,
                         all_features)
-    if not args.elastic:
-        sys.stderr.write('\nWriting gene JSON files\n')
-        with open(os.path.join(args.output_dir, "annotatedNodes.json"), "w") as n:
-            n.write(json.dumps({"information":all_features}))
-    else:
+    if args.elastic:
+        # directly add information to elasticindex
         sys.stderr.write('\nBuilding Elastic Search index\n')
         elasticsearch_isolates(updated_annotations, args.index_name)
+    sys.stderr.write('\nWriting gene JSON files\n')
+    with open(os.path.join(args.output_dir, "annotatedNodes.json"), "w") as n:
+        n.write(json.dumps({"information":all_features}))
+    # update isolate index number for subsequent runs
+    indexNoDict["geneIndexNo"] = index_no
+    with open(args.index_file, "w") as indexFile:
+        indexFile.write(json.dumps(indexNoDict))
     sys.exit(0)
 
 if __name__ == '__main__':

@@ -38,12 +38,11 @@ def get_options():
                         choices=['sra', 'ena'],
                         type=str)
     io_opts.add_argument("-i",
-                        "--index-no",
-                        dest="index_no",
-                        required=False,
-                        help="integer value to start index from",
-                        default=0,
-                        type=int)
+                        "--index-file",
+                        dest="index_file",
+                        required=True,
+                        help="JSON file containing integer value to start index from",
+                        type=str)
     io_opts.add_argument("-o",
                         "--output",
                         dest="output_dir",
@@ -159,7 +158,9 @@ def main():
     sample_list = sample_accessions.split("\n")
     # assign isolate index number to read metadata
     indexed_accessions = []
-    index_no = args.index_no
+    with open(args.index_file, "r") as indexFile:
+        indexNoDict = json.loads(indexFile.read())
+    index_no = int(indexNoDict["isolateIndexNo"])
     for access in range(len(sample_list)):
         if not sample_list[access] == "":
             assigned_index = {"isolate_index": index_no,
@@ -196,6 +197,10 @@ def main():
             f.write(metadata_json)
         with open(os.path.join(args.output_dir, "indexIsolatePairs.json"), "w") as indexPairs:
             indexPairs.write(json.dumps(indexIsolateDict))
+        # update isolate index number for subsequent runs
+        indexNoDict["isolateIndexNo"] = index_no
+        with open(args.index_file, "w") as indexFile:
+            indexFile.write(json.dumps(indexNoDict))
     if args.read_source == "sra":
         failed_accessions = []
         for job in tqdm(job_list):

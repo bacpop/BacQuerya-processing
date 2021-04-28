@@ -37,12 +37,11 @@ def get_options():
                         help='directory of genomic sequences',
                         type=str)
     io_opts.add_argument("-i",
-                        "--index-no",
-                        dest="index_no",
-                        required=False,
-                        help="integer value to start index from",
-                        default=0,
-                        type=int)
+                        "--index-file",
+                        dest="index_file",
+                        required=True,
+                        help="JSON file containing integer value to start index from",
+                        type=str)
     io_opts.add_argument("-o",
                         "--output",
                         dest="output_file",
@@ -154,7 +153,9 @@ def main():
     assembly_reports = glob.glob(args.assemblies + '/*_assembly_stats.txt')
     indexedIsolateDict = {}
     indexed_assemblies = []
-    index_no = args.index_no
+    with open(args.index_file, "r") as indexFile:
+        indexNoDict = json.loads(indexFile.read())
+    index_no = int(indexNoDict["isolateIndexNo"])
     for assembly in assembly_reports:
         assigned_index = {"isolate_index": index_no,
                           "assembly file": assembly}
@@ -186,6 +187,10 @@ def main():
     # output isolateName and biosample accession k,v pairs
     with open(args.biosampleKeys, "w") as b:
         b.write(json.dumps(labelBiosampleDict))
+    # update isolate index number for subsequent runs
+    indexNoDict["isolateIndexNo"] = index_no
+    with open(args.index_file, "w") as indexFile:
+        indexFile.write(json.dumps(indexNoDict))
     sys.exit(0)
 
 if __name__ == '__main__':

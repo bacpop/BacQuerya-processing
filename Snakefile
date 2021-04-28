@@ -82,10 +82,11 @@ rule retrieve_ena_read_metadata:
         run_accessions="retrieved_ena_read_metadata/fastq_links.txt",
         isolateJSON="retrieved_ena_read_metadata/isolateReadAttributes.json"
     params:
+        index=config['extract_assembly_stats']['index_file'],
         email=config['extract_entrez_information']['email'],
         threads=config['n_cpu']
     shell:
-       'python extract_read_metadata-runner.py -s {input} -r ena -i 200 -e {params.email} --threads {params.threads} -o {output.output_dir}'
+       'python extract_read_metadata-runner.py -s {input} -r ena -i {params.index} -e {params.email} --threads {params.threads} -o {output.output_dir}'
 
 # retrieve raw reads from ENA
 rule retrieve_ena_reads:
@@ -188,14 +189,18 @@ rule clean_merqury_outputs:
 # run prodigal to predict genes in assemblies
 rule run_prodigal:
     input:
-        rules.unzip_genomes.output
+        genome_dir=rules.unzip_genomes.output,
+        annotation_dir=rules.unzip_annotations.output
     output:
         directory("prodigal_predicted_annotations")
     run:
-        assemblies = glob.glob(os.path.join(input[0], "*.fna"))
+        assemblies = glob.glob(os.path.join(input.genome_dir, "*.fna"))
+        existing_annotations = glob.glob(os.path.join(input.annotation_dir, "*.gff"))
+        existing_annotations = [os.path.basename(filename).split(".gff")[0] for filename in existing_annotations]
         for assembly in assemblies:
-            output_file = os.path.join(output[0], os.path.splitext(os.path.basename(assembly))[0])
-            shell("mkdir -p {output} && prodigal -f gff -i " + assembly + " -o " + output_file + ".gff")
+            if not os.path.basename(assembly).split(".fna")[0] in existing_annotations:
+                output_file = os.path.join(output[0], os.path.splitext(os.path.basename(assembly))[0])
+                shell("mkdir -p {output} && prodigal -f gff -i " + assembly + " -o " + output_file + ".gff")
 
 # reformat annotation files for panaroo input
 rule reformat_annotations:
@@ -226,53 +231,35 @@ rule extract_assembly_stats:
         entrez_stats=rules.retrieve_assembly_stats.output,
         genome_files=rules.unzip_genomes.output
     output:
-        isolateFile='extracted_assembly_stats/isolateAssemblyAttributes.json',
-        indexJSON='extracted_assembly_stats/indexIsolatePairs.json',
-        biosampleJSON='extracted_assembly_stats/biosampleIsolatePairs.json'
+        directory("extracted_assembly_stats")
     params:
-        index=config['extract_assembly_stats']['index_no'],
+        index=config['extract_assembly_stats']['index_file'],
         threads=config['n_cpu'],
         email=config['extract_entrez_information']['email']
     shell:
-       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output.isolateFile} -k {output.indexJSON} -b {output.biosampleJSON} -e {params.email} --threads {params.threads}'
+       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output}/isolateAssemblyAttributes.json -k {output}/indexIsolatePairs.json -b {output}/biosampleIsolatePairs.json -e {params.email} --threads {params.threads}'
 
 # build gene JSONS from GFF and sequence files
 rule extract_genes:
     input:
         annotations=rules.unzip_annotations.output,
         genomes=rules.unzip_genomes.output,
-        isolateJson=rules.extract_assembly_stats.output.isolateFile,
-        #graphDir=rules.run_panaroo.output
-        graphDir="panaroo_merged_output",
-        isolateKeyPairs=rules.extract_assembly_stats.output.indexJSON,
-        biosampleKeyPairs=rules.extract_assembly_stats.output.biosampleJSON
+        assemblyStatDir=rules.extract_assembly_stats.output,
+        graphDir=rules.run_panaroo.output,
+        #graphDir="panaroo_merged_output",
     output:
         directory("extracted_genes")
     params:
-        index=config['extract_genes']['index_no'],
+        index=config['extract_assembly_stats']['index_file'],
         threads=config['n_cpu'],
         index_name=config['index_sequences']['elasticSearchIndex']
     shell:
-       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.isolateJson} -k {input.isolateKeyPairs} -i {params.index} -o {output} --threads {params.threads} --elastic-index --index-name {params.index_name} --biosampleJSON {input.biosampleKeyPairs}'
-
-# build gene JSONS from prodigal-predicted GFF and sequence files
-rule extract_predicted_genes:
-    input:
-        annotations=rules.run_prodigal.output,
-        #genomes=rules.assembled_reads.output,
-        isolateJson=rules.retrieve_ena_read_metadata.output.isolateJSON,
-    output:
-        directory("extracted_genes")
-    params:
-        index=config['extract_genes']['index_no'],
-        threads=config['n_cpu']
-    shell:
-       'python extract_genes-runner.py -s {input.genomes} -g {input.annotations} -j {input.isolateJson} -i {params.index} -o {output} --threads {params.threads}'
+       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.assemblyStatDir}/isolateAssemblyAttributes.json -k {input.assemblyStatDir}/indexIsolatePairs.json -i {params.index} -o {output} --threads {params.threads} --elastic-index --index-name {params.index_name} --biosampleJSON {input.assemblyStatDir}/biosampleIsolatePairs.json'
 
 # append isolate attributes to elasticsearch index
 rule index_isolate_attributes:
     input:
-        attribute_file=rules.extract_assembly_stats.output.isolateFile,
+        assemblyStatDir=rules.extract_assembly_stats.output,
         feature_file=rules.extract_genes.output,
         ena_metadata=rules.retrieve_ena_read_metadata.output.output_dir
     params:
@@ -280,13 +267,13 @@ rule index_isolate_attributes:
     output:
         touch("index_isolates.done")
     shell:
-       'python index_isolate_attributes-runner.py -f {input.attribute_file} -e {input.ena_metadata} -i {params.index} -g {input.feature_file}'
+       'python index_isolate_attributes-runner.py -f {input.assemblyStatDir}/isolateAssemblyAttributes.json -e {input.ena_metadata} -i {params.index} -g {input.feature_file}'
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_gene_sequences:
     input:
         input_dir=rules.extract_genes.output,
-        graph_dir="panaroo_merged_output",
+        graph_dir=rules.run_panaroo.output,
         fake_input="index_isolates.done"
     output:
         directory("index_genes")
@@ -310,3 +297,33 @@ rule index_assembly_sequences:
         index_type=config['index_sequences']['assembly_type']
     shell:
        'python index_gene_features-runner.py -t {params.index_type} -a {input} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
+
+# merge the current run with information from previous runs
+rule merge_runs:
+    input:
+        ncbiAssemblyStatDir=rules.extract_assembly_stats.output,
+        extractedGeneMetadata=rules.extract_genes.output,
+        panarooOutput=rules.run_panaroo.output,
+        currentRunAccessions=config['extract_entrez_information']['accession_file']
+    params:
+        threads=config['n_cpu']
+    output:
+        touch("merge_runs.done")
+    shell:
+        'python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --geneMetadataDir {input.extractedGeneMetadata} --panarooOutputDir {input.panarooOutput} --accessionFile {input.currentRunAccessions} --previous-run previous_run --threads {params.threads}'
+
+# run entire pipeline and delete current run output directories when done
+rule run_pipeline:
+    input:
+        ncbiAssemblyStatDir=rules.extract_assembly_stats.output,
+        extractedGeneMetadata=rules.extract_genes.output,
+        panarooOutput=rules.run_panaroo.output,
+        mergeRuns=rules.merge_runs.output,
+        reformattedAnnotations=rules.reformat_annotations.output,
+        unzippedAnnotations=rules.unzip_annotations.output,
+        retrieved_annotations=rules.retrieve_annotations.output,
+        unzipped_genomes=rules.unzip_genomes.output,
+        retrieved_genomes=rules.retrieve_genomes.output,
+        retrieved_assembly_stats=rules.retrieve_assembly_stats.output
+    shell:
+        'rm -rf {input.retrieved_genomes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations}'

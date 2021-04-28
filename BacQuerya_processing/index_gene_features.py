@@ -66,11 +66,6 @@ def get_options():
                         help="false positive rate for index. Greater fpr means smaller index (default = 0.01).",
                         default=0.01,
                         type=float)
-    io_opts.add_argument("--all-genes",
-                        dest="all_genes",
-                        help="construct index from all genes in input annotations",
-                        action='store_true',
-                        default=False)
     io_opts.add_argument("--index",
                         dest="index_name",
                         required=False,
@@ -162,43 +157,29 @@ def main():
             sys.stderr.write('\nBuilding elasticsearch index\n')
             elasticsearch_isolates(isolateGeneDicts,
                                 args.index_name)
-        # cnstruct appropriate COBS index
-        if args.all_genes:
-            with open(os.path.join(args.input_dir, "allGenes.json"), "r") as f:
-                gene_dicts_str = f.read()
-            gene_dicts = json.loads(gene_dicts_str)
-            gene_dicts = gene_dicts["information"]
-            job_list = [
-                gene_dicts[i:i + args.n_cpu] for i in range(0, len(gene_dicts), args.n_cpu)
-            ]
-            # parrallelise writing of gene-specific files for indexing
-            for job in tqdm(job_list):
-                Parallel(n_jobs=args.n_cpu)(delayed(write_gene_files)(g,
-                                                                      temp_dir) for g in job)
-        else:
-            # load panaroo graph and write sequence files from COG representatives
-            sys.stderr.write('\nLoading panaroo graph\n')
-            G = nx.read_gml(os.path.join(args.graph_dir, "final_graph.gml"))
-            with open(os.path.join(args.input_dir, "panarooPairs.json"), "r") as jsonFile:
-                pairString = jsonFile.read()
-            pairs = json.loads(pairString)
-            panarooPairsUpdated = []
-            representative_sequences = []
-            sys.stderr.write('\nWriting gene-specific files for COBS indexing\n')
-            for node in tqdm(G._node):
-                y = G._node[node]
-                gene_name = y["name"]
-                dna = y["dna"].split(";")
-                gene_index = pairs[y["name"]]
-                for seq in range(len(dna)):
-                    representative_sequences.append({"gene_index": str(gene_index) + "_v" + str(seq), "sequence": dna[seq]})
-            job_list = [
-                representative_sequences[i:i + args.n_cpu] for i in range(0, len(representative_sequences), args.n_cpu)
-            ]
-            # parrallelise writing of gene-specific files for indexing
-            for job in tqdm(job_list):
-                Parallel(n_jobs=args.n_cpu)(delayed(write_gene_files)(feature,
-                                                                      temp_dir) for feature in job)
+        # load panaroo graph and write sequence files from COG representatives
+        sys.stderr.write('\nLoading panaroo graph\n')
+        G = nx.read_gml(os.path.join(args.graph_dir, "final_graph.gml"))
+        with open(os.path.join(args.input_dir, "panarooPairs.json"), "r") as jsonFile:
+            pairString = jsonFile.read()
+        pairs = json.loads(pairString)
+        panarooPairsUpdated = []
+        representative_sequences = []
+        sys.stderr.write('\nWriting gene-specific files for COBS indexing\n')
+        for node in tqdm(G._node):
+            y = G._node[node]
+            gene_name = y["name"]
+            dna = y["dna"].split(";")
+            gene_index = pairs[y["name"]]
+            for seq in range(len(dna)):
+                representative_sequences.append({"gene_index": str(gene_index) + "_v" + str(seq), "sequence": dna[seq]})
+        job_list = [
+            representative_sequences[i:i + args.n_cpu] for i in range(0, len(representative_sequences), args.n_cpu)
+        ]
+        # parrallelise writing of gene-specific files for indexing
+        for job in tqdm(job_list):
+            Parallel(n_jobs=args.n_cpu)(delayed(write_gene_files)(feature,
+                                                                    temp_dir) for feature in job)
     if args.type == "assembly":
         assembly_files_compressed = glob.glob(os.path.join(args.assembly_dir, "*.fna"))
         job_list = [
