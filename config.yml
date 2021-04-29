@@ -6,7 +6,7 @@ n_cpu: 4
 
 # options for extract_entrez_information
 extract_entrez_information:
-  accession_file: requested_accessions.txt
+  accession_file: NCBI_requested_accessions.txt
   email: empty
   assembly: assembly-stats
   gff: annotation
@@ -14,7 +14,7 @@ extract_entrez_information:
 
 # options to extract sequence reads
 extract_read_metadata:
-  accession_file: test/read_accessions.txt
+  accession_file:  EBI_requested_accessions.txt
 
 # options for single_meryl_dbs
 single_meryl_dbs:
@@ -35,11 +35,11 @@ extract_assembly_stats:
 
 # options for index_isolate_attributes
 index_isolate_attributes:
-  index: sparc_isolate_index
+  index: isolate_index
 
 # options for index_gene_features
 index_sequences:
   kmer_length: 31
   gene_type: gene
-  elasticSearchIndex: sparc_gene_index
+  elasticSearchIndex: gene_index
   assembly_type: assembly

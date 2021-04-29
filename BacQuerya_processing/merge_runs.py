@@ -14,41 +14,35 @@ def get_options():
     io_opts.add_argument("--ncbi-metadata",
                         dest="ncbi_metadata",
                         required=True,
-                        help='isolate JSON output by extract_assembly_stats for current run',
+                        help='directory output by extract_assembly_stats for current run',
                         type=str)
     io_opts.add_argument("--geneMetadataDir",
                         dest="geneMetadataDir",
                         required=True,
-                        help="JSON of gene metadata output by extract_genes for current run",
+                        help="directory of gene metadata output by extract_genes for current run",
                         type=str)
-    io_opts.add_argument("--panarooOutputDir",
-                        dest="panarooOutputDir",
+    io_opts.add_argument("--alignement-dir",
+                        dest="alignement_dir",
                         required=True,
-                        help="Directory output by panaroo for current run",
+                        help="directory of alignements output by generate_alignements for current run",
                         type=str)
     io_opts.add_argument("--accessionFile",
                         dest="accessionFile",
                         required=True,
-                        help="File of accession IDs used in the current run",
+                        help="file of accession IDs used in the current run",
                         type=str)
     io_opts.add_argument("--previous-run",
                         dest="prev_run",
                         required=True,
                         help="directory of outputs containing information from previous runs",
                         type=str)
-    io_opts.add_argument("--threads",
-                        dest="n_cpu",
-                        required=False,
-                        help="number of threads for extracting features",
-                        default=1,
-                        type=int)
     args = parser.parse_args()
     return (args)
 
 def mergeNCBIMetadata(current_metadata_file, prev_dir):
     with open(current_metadata_file, "r") as currentFile:
         currentIsolateJSON = currentFile.read()
-    previous_metadata_file = os.path.join(prev_dir, os.path.basename(current_metadata_file))
+    previous_metadata_file = os.path.join(prev_dir, current_metadata_file)
     with open(previous_metadata_file, "r") as previousFile:
         previousIsolateJSON = previousFile.read()
     currentIsolateDicts = json.loads(currentIsolateJSON)["information"]
@@ -61,7 +55,7 @@ def mergeNCBIKVPairs(current_KVPairs, current_biosamplePairs, prev_dir):
     # update isolate key value json
     with open(current_KVPairs, "r") as currentKVFile:
         currentKVJSON = currentKVFile.read()
-    previous_KVPairs = os.path.join(prev_dir, os.path.basename(current_KVPairs))
+    previous_KVPairs = os.path.join(prev_dir, current_KVPairs)
     with open(previous_KVPairs, "r") as previousKVFile:
         previousKVJSON = previousKVFile.read()
     currentKVDict = json.loads(currentKVJSON)
@@ -73,7 +67,7 @@ def mergeNCBIKVPairs(current_KVPairs, current_biosamplePairs, prev_dir):
     # update biosample isolate pairs json
     with open(current_biosamplePairs, "r") as currentBiosampleFile:
         currentBiosampleJSON = currentBiosampleFile.read()
-    previous_biosamplePairs = os.path.join(prev_dir, os.path.basename(current_biosamplePairs))
+    previous_biosamplePairs = os.path.join(prev_dir, current_biosamplePairs)
     with open(previous_biosamplePairs, "r") as previousBiosampleFile:
         previousBiosampleJSON = previousBiosampleFile.read()
     currentBiosampltDict = json.loads(currentBiosampleJSON)
@@ -96,20 +90,6 @@ def mergeGeneMetadata(current_geneDir, prev_dir):
     updatedGeneDict["information"] += currentGeneDicts
     with open(previous_metadataFile, "w") as updatedGeneFile:
        updatedGeneFile.write(json.dumps(updatedGeneDict))
-    # update gene: index key value pairs
-    current_panarooPairs = os.path.join(current_geneDir, "panarooPairs.json")
-    with open(current_panarooPairs, "r") as currentKVFile:
-        currentKVJSON = currentKVFile.read()
-    previous_panarooPairs = os.path.join(prev_dir, current_panarooPairs)
-    with open(previous_panarooPairs, "r") as previousKVFile:
-        previousKVJSON = previousKVFile.read()
-    currentKVDict = json.loads(currentKVJSON)
-    currentGeneIndex = max(currentKVDict.values())
-    updatedKVDict = json.loads(previousKVJSON)
-    updatedKVDict.update(currentKVDict)
-    with open(previous_panarooPairs, "w") as updatedKVFile:
-       updatedKVFile.write(json.dumps(updatedKVDict))
-    return currentGeneIndex
 
 def mergeAccessionIDs(current_accessionFile, prev_dir):
     with open(current_accessionFile, "r") as currentFile:
@@ -128,15 +108,13 @@ def main():
     """Main function. Parses command line args and calls functions."""
     args = get_options()
 
-    if not os.path.exists(args.prev_run):
+    if not os.path.exists(os.path.join(args.prev_run, os.path.basename(args.accessionFile))):
         sys.stderr.write("\nCopying current run data into " + args.prev_run + "\n")
-        subprocess_command = "mkdir "
-        subprocess_command += args.prev_run
-        subprocess_command += " && cp -r "
+        subprocess_command = "cp -r "
         subprocess_command += args.ncbi_metadata + " "
         subprocess_command += args.geneMetadataDir + " "
-        subprocess_command += args.panarooOutputDir + " "
         subprocess_command += args.accessionFile + " "
+        subprocess_command += args.alignement_dir + " "
         subprocess_command += " previous_run"
         subprocess.run(subprocess_command, shell=True, check=True)
     else:
@@ -156,14 +134,8 @@ def main():
         sys.stderr.write("\nDone\n")
         # merge gene metadata for current and previous runs
         sys.stderr.write("\nMerging current and previous gene metadata\n")
-        currentGeneIndex = mergeGeneMetadata(args.geneMetadataDir,
-                                             args.prev_run)
-        # merge panaroo output for current and previous runs
-        sys.stderr.write("\nMerging current and previous panaroo outputs\n")
-        previous_panarooOutput = os.path.join(args.prev_run, args.panarooOutputDir)
-        panarooCommand = "panaroo-merge -d " + args.panarooOutputDir + " " + previous_panarooOutput + " -o " + previous_panarooOutput + " -t " + str(args.n_cpu)
-        subprocess.run(panarooCommand, shell=True, check=True)
-        sys.stderr.write("\nDone\n")
+        mergeGeneMetadata(args.geneMetadataDir,
+                          args.prev_run)
         # merge accession IDs for current and previous runs
         sys.stderr.write("\nMerging current and previous accession IDs\n")
         mergeAccessionIDs(args.accessionFile,

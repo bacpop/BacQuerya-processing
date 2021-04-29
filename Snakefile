@@ -225,6 +225,32 @@ rule run_panaroo:
     shell:
         "panaroo -i {input}/*.gff -o {output} --clean-mode sensitive -t {params.threads}"
 
+# generate mafft alignements for panaroo output
+rule mafft_align:
+    input:
+        rules.run_panaroo.output
+    params:
+        threads=config['n_cpu']
+    output:
+        directory("aligned_gene_sequences")
+    shell:
+        "python generate_alignements-runner.py --graph-dir {input} --output-dir {output} --threads {params.threads}"
+
+# merge current panaroo output with previous panaroo outputs
+rule merge_panaroo:
+    input:
+        current_output=rules.run_panaroo.output
+    params:
+        threads=config['n_cpu']
+    output:
+        touch("panaroo_merge.done")
+    run:
+        if os.path.exists("previous_run"):
+            shell("panaroo-merge -d {input.current_output} previous_run/panaroo_output -o previous_run/panaroo_output -t {params.threads}")
+        else:
+            os.mkdir("previous_run")
+            shell("cp -r {input.current_output} previous_run")
+
 # build isolate JSONS from assembly-stats
 rule extract_assembly_stats:
     input:
@@ -245,8 +271,8 @@ rule extract_genes:
         annotations=rules.unzip_annotations.output,
         genomes=rules.unzip_genomes.output,
         assemblyStatDir=rules.extract_assembly_stats.output,
-        graphDir=rules.run_panaroo.output,
-        #graphDir="panaroo_merged_output",
+        #graphDir=rules.run_panaroo.output,
+        merged_panaroo=rules.merge_panaroo.output
     output:
         directory("extracted_genes")
     params:
@@ -254,7 +280,7 @@ rule extract_genes:
         threads=config['n_cpu'],
         index_name=config['index_sequences']['elasticSearchIndex']
     shell:
-       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.assemblyStatDir}/isolateAssemblyAttributes.json -k {input.assemblyStatDir}/indexIsolatePairs.json -i {params.index} -o {output} --threads {params.threads} --elastic-index --index-name {params.index_name} --biosampleJSON {input.assemblyStatDir}/biosampleIsolatePairs.json'
+       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g previous_run/panaroo_output -j {input.assemblyStatDir}/isolateAssemblyAttributes.json -k {input.assemblyStatDir}/indexIsolatePairs.json -i {params.index} -o {output} --threads {params.threads} --elastic-index --index-name {params.index_name} --biosampleJSON {input.assemblyStatDir}/biosampleIsolatePairs.json'
 
 # append isolate attributes to elasticsearch index
 rule index_isolate_attributes:
@@ -273,8 +299,9 @@ rule index_isolate_attributes:
 rule index_gene_sequences:
     input:
         input_dir=rules.extract_genes.output,
-        graph_dir=rules.run_panaroo.output,
-        fake_input="index_isolates.done"
+        #graph_dir=rules.run_panaroo.output,
+        merged_panaroo=rules.merge_panaroo.output,
+        fake_input=rules.index_isolate_attributes.output
     output:
         directory("index_genes")
     params:
@@ -283,7 +310,7 @@ rule index_gene_sequences:
         index_type=config['index_sequences']['gene_type'],
         elasticIndex=config['index_sequences']['elasticSearchIndex'],
     shell:
-       'python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g {input.graph_dir} -o {output} --kmer-length {params.k_mer} --threads {params.threads} --elastic-index --index {params.elasticIndex}'
+       'python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads} --elastic-index --index {params.elasticIndex}'
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_assembly_sequences:
@@ -303,14 +330,12 @@ rule merge_runs:
     input:
         ncbiAssemblyStatDir=rules.extract_assembly_stats.output,
         extractedGeneMetadata=rules.extract_genes.output,
-        panarooOutput=rules.run_panaroo.output,
-        currentRunAccessions=config['extract_entrez_information']['accession_file']
-    params:
-        threads=config['n_cpu']
+        currentRunAccessions=config['extract_entrez_information']['accession_file'],
+        aligned_genes=rules.mafft_align.output
     output:
         touch("merge_runs.done")
     shell:
-        'python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --geneMetadataDir {input.extractedGeneMetadata} --panarooOutputDir {input.panarooOutput} --accessionFile {input.currentRunAccessions} --previous-run previous_run --threads {params.threads}'
+        'python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --accessionFile {input.currentRunAccessions} --previous-run previous_run'
 
 # run entire pipeline and delete current run output directories when done
 rule run_pipeline:
@@ -324,6 +349,8 @@ rule run_pipeline:
         retrieved_annotations=rules.retrieve_annotations.output,
         unzipped_genomes=rules.unzip_genomes.output,
         retrieved_genomes=rules.retrieve_genomes.output,
-        retrieved_assembly_stats=rules.retrieve_assembly_stats.output
+        retrieved_assembly_stats=rules.retrieve_assembly_stats.output,
+        merged_panaroo=rules.merge_panaroo.output,
+        aligned_genes=rules.mafft_align.output
     shell:
-        'rm -rf {input.retrieved_genomes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations}'
+        'rm -rf {input.retrieved_genomes} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'

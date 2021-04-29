@@ -160,7 +160,7 @@ def main():
         # load panaroo graph and write sequence files from COG representatives
         sys.stderr.write('\nLoading panaroo graph\n')
         G = nx.read_gml(os.path.join(args.graph_dir, "final_graph.gml"))
-        with open(os.path.join(args.input_dir, "panarooPairs.json"), "r") as jsonFile:
+        with open(os.path.join(os.path.dirname(args.graph_dir), "extracted_genes", "panarooPairs.json"), "r") as jsonFile:
             pairString = jsonFile.read()
         pairs = json.loads(pairString)
         panarooPairsUpdated = []
