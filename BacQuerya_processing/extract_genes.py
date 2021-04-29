@@ -124,22 +124,22 @@ def generate_library(graph_dir,
         with open(previousRunFile, "r") as prevFile:
             panaroo_pairsJSON = prevFile.read()
         panaroo_pairs = json.loads(panaroo_pairsJSON)
+        update_index_no = False
     else:
         panaroo_pairs = {}
+        update_index_no = True
     # iterate through panaroo graph to extract gene information if node is not present in panarooPairs or has been updated
     sys.stderr.write('\nExtracting node information from Panaroo graph\n')
     for node in tqdm(G._node):
         y = G._node[node]
         gene_names = y["name"]
         splitNames = gene_names.split("~~~")
-        update_index_no = True
-        if not panaroo_pairs == {}:
+        if not update_index_no:
             pairs_toRemove = []
             for k, v in panaroo_pairs.items():
                 if any(name in k for name in splitNames):
                     index_no = v
                     pairs_toRemove.append(k)
-                    update_index_no = False
                 else:
                     index_no = index_no
             for key in pairs_toRemove:
@@ -176,7 +176,6 @@ def generate_library(graph_dir,
         if update_index_no:
             index_no += 1
     # write name, index pairs in graph for COBS indexing in index_gene_features
-    print(len(panaroo_pairs))
     with open(os.path.join(output_dir, "panarooPairs.json"), "w") as o:
         o.write(json.dumps(panaroo_pairs))
     return annotationID_key_updated_genes, updated_genes, index_no
