@@ -225,7 +225,7 @@ rule run_panaroo:
     shell:
         "panaroo -i {input}/*.gff -o {output} --clean-mode sensitive -t {params.threads}"
 
-# generate mafft alignements for panaroo output
+# generate mafft alignments for panaroo output
 rule mafft_align:
     input:
         rules.run_panaroo.output
@@ -234,7 +234,7 @@ rule mafft_align:
     output:
         directory("aligned_gene_sequences")
     shell:
-        "python generate_alignements-runner.py --graph-dir {input} --output-dir {output} --threads {params.threads}"
+        "python generate_alignments-runner.py --graph-dir {input} --output-dir {output} --threads {params.threads}"
 
 # merge current panaroo output with previous panaroo outputs
 rule merge_panaroo:
@@ -332,10 +332,12 @@ rule merge_runs:
         extractedGeneMetadata=rules.extract_genes.output,
         currentRunAccessions=config['extract_entrez_information']['accession_file'],
         aligned_genes=rules.mafft_align.output
+    params:
+        threads=config['n_cpu']
     output:
         touch("merge_runs.done")
     shell:
-        'python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --accessionFile {input.currentRunAccessions} --previous-run previous_run'
+        'python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --accessionFile {input.currentRunAccessions} --previous-run previous_run --threads {params.threads}'
 
 # run entire pipeline and delete current run output directories when done
 rule run_pipeline:

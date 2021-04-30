@@ -35,7 +35,7 @@ def get_options():
     return (args)
 
 def mafft_align(input_file, output_dir):
-    """Multi-threaded mafft alignement using the subprocess module"""
+    """Multi-threaded mafft alignment using the subprocess module"""
     subprocess_command = "mafft --quiet --retree 1 --maxiterate 0 --nofft --parttree "
     subprocess_command += input_file + " > "
     subprocess_command += os.path.join(output_dir, os.path.basename(input_file).replace(".fasta", ".aln.fas"))
@@ -83,7 +83,7 @@ def main():
                 outFile.write(multiFSAline)
     # run mafft on the unaligned MSA files
     sys.stderr.write('\nAligning gene multi-fasta files\n')
-    # parallelise mafft alignement
+    # parallelise mafft alignment
     file_list = [
         unaligned_files[i:i + args.n_cpu] for i in range(0, len(unaligned_files), args.n_cpu)
     ]

@@ -153,9 +153,12 @@ def generate_library(graph_dir,
             isol_label = G.graph["isolateNames"][mem]
             member_labels.append(isol_label)
             biosample_labels.append(label_accession_pairs[isol_label])
-            gene_data_row = gene_data_json[y["geneIDs"].split(";")[mem]]
-            member_annotation_id = gene_data_row[0]
-            annotation_ids.append(member_annotation_id)
+            try:
+                gene_data_row = gene_data_json[y["geneIDs"].split(";")[mem]]
+                member_annotation_id = gene_data_row[0]
+                annotation_ids.append(member_annotation_id)
+            except:
+                print(y["geneIDs"].split(";")[mem] + "\t" + gene_names + "\n")
         isolate_indices = [isolateIndexJSON[label] for label in member_labels]
         panaroo_pairs.update({y["name"] : index_no})
         if not y["description"] == "":
