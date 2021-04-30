@@ -1,6 +1,7 @@
 import glob
 import os
 import subprocess
+from tqdm import tqdm
 
 configfile: 'config.yml'
 
@@ -194,25 +195,26 @@ rule run_prodigal:
     output:
         directory("prodigal_predicted_annotations")
     run:
-        assemblies = glob.glob(os.path.join(input.genome_dir, "*.fna"))
-        existing_annotations = glob.glob(os.path.join(input.annotation_dir, "*.gff"))
+        assemblies = glob.glob(os.path.join(input.genome_dir[0], "*.fna"))
+        existing_annotations = glob.glob(os.path.join(input.annotation_dir[0], "*.gff"))
         existing_annotations = [os.path.basename(filename).split(".gff")[0] for filename in existing_annotations]
-        for assembly in assemblies:
-            if not os.path.basename(assembly).split(".fna")[0] in existing_annotations:
-                output_file = os.path.join(output[0], os.path.splitext(os.path.basename(assembly))[0])
-                shell("mkdir -p {output} && prodigal -f gff -i " + assembly + " -o " + output_file + ".gff")
+        for assembly in tqdm(assemblies):
+            #if not os.path.basename(assembly).split(".fna")[0] in existing_annotations:
+            output_file = os.path.join(output[0], os.path.splitext(os.path.basename(assembly))[0] + ".gff")
+            shell("mkdir -p {output} && prodigal -f gff -q -i " + assembly + " -o " + output_file)
 
 # reformat annotation files for panaroo input
 rule reformat_annotations:
     input:
         genome_dir=rules.unzip_genomes.output,
-        annotation_dir=rules.unzip_annotations.output
+        annotation_dir=rules.unzip_annotations.output,
+        prodigal_dir=rules.run_prodigal.output
     params:
         threads=config['n_cpu']
     output:
         directory("panaroo_cleaned_annotations")
     shell:
-        "python panaroo_clean_inputs-runner.py -a {input.annotation_dir} -g {input.genome_dir} -o {output} --threads {params.threads}"
+        "python panaroo_clean_inputs-runner.py -a {input.annotation_dir} -g {input.genome_dir} -p {input.prodigal_dir} -o {output} --threads {params.threads}"
 
 # run panaroo on reformatted annotations
 rule run_panaroo:
