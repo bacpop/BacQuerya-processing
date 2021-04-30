@@ -118,10 +118,33 @@ def generate_library(graph_dir,
         label_accession_str = bios.read()
     label_accession_pairs = json.loads(label_accession_str)
     annotationID_key_updated_genes = {}
-    panaroo_pairs = dict()
+    # need to update panarooPairs.json if it already exists, if not then create it.
+    previousRunFile = os.path.join(os.path.dirname(graph_dir), os.path.basename(output_dir), "panarooPairs.json")
+    if os.path.exists(previousRunFile):
+        with open(previousRunFile, "r") as prevFile:
+            panaroo_pairsJSON = prevFile.read()
+        panaroo_pairs = json.loads(panaroo_pairsJSON)
+        update_index_no = False
+    else:
+        panaroo_pairs = {}
+        update_index_no = True
+    # iterate through panaroo graph to extract gene information if node is not present in panarooPairs or has been updated
     sys.stderr.write('\nExtracting node information from Panaroo graph\n')
     for node in tqdm(G._node):
         y = G._node[node]
+        gene_names = y["name"]
+        splitNames = gene_names.split("~~~")
+        if not update_index_no:
+            pairs_toRemove = []
+            for k, v in panaroo_pairs.items():
+                if any(name in k for name in splitNames):
+                    index_no = v
+                    pairs_toRemove.append(k)
+                else:
+                    index_no = index_no
+            for key in pairs_toRemove:
+                del panaroo_pairs[key]
+        # if not all names in previous panaroo pairs then add or update information in index
         frequency = round((len(y["members"])/num_isolates)*100, 1)
         member_labels = []
         annotation_ids = []
@@ -130,28 +153,31 @@ def generate_library(graph_dir,
             isol_label = G.graph["isolateNames"][mem]
             member_labels.append(isol_label)
             biosample_labels.append(label_accession_pairs[isol_label])
-            gene_data_row = gene_data_json[y["geneIDs"].split(";")[mem]]
-            member_annotation_id = gene_data_row[0]
-            annotation_ids.append(member_annotation_id)
+            try:
+                gene_data_row = gene_data_json[y["geneIDs"].split(";")[mem]]
+                member_annotation_id = gene_data_row[0]
+                annotation_ids.append(member_annotation_id)
+            except:
+                print(y["geneIDs"].split(";")[mem] + "\t" + gene_names + "\n")
         isolate_indices = [isolateIndexJSON[label] for label in member_labels]
         panaroo_pairs.update({y["name"] : index_no})
         if not y["description"] == "":
             panarooDescription = y["description"].split(";")
         else:
             panarooDescription = ["Hypothetical protein"]
-        gene_names = y["name"]
         annotation_dict = {"panarooNames" : gene_names,
-                           "panarooDescriptions" : panarooDescription,
-                           "panarooFrequency": frequency,
-                           "gene_index": index_no,
-                           "foundIn_labels": member_labels,
-                           "foundIn_indices": isolate_indices,
-                           "foundIn_biosamples": biosample_labels,
-                           "member_annotation_ids": annotation_ids}
+                            "panarooDescriptions" : panarooDescription,
+                            "panarooFrequency": frequency,
+                            "gene_index": index_no,
+                            "foundIn_labels": member_labels,
+                            "foundIn_indices": isolate_indices,
+                            "foundIn_biosamples": biosample_labels,
+                            "member_annotation_ids": annotation_ids}
         updated_genes.append(annotation_dict)
         for annot_ID in annotation_ids:
             annotationID_key_updated_genes.update({annot_ID: annotation_dict})
-        index_no += 1
+        if update_index_no:
+            index_no += 1
     # write name, index pairs in graph for COBS indexing in index_gene_features
     with open(os.path.join(output_dir, "panarooPairs.json"), "w") as o:
         o.write(json.dumps(panaroo_pairs))
@@ -194,7 +220,6 @@ def build_gff_jsons(gff_file,
                                 "strand":strand,
                                 "start":start,
                                 "end":end,
-                                "sequence":feature_sequence,
                                 "sequenceLength":len(feature_sequence),
                                 "isolateName": label,
                                 "isolateIndex": isolate_index}

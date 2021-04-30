@@ -1,7 +1,10 @@
+import glob
+from joblib import Parallel, delayed
 import json
 import os
 import subprocess
 import sys
+from tqdm import tqdm
 
 def get_options():
 
@@ -14,22 +17,22 @@ def get_options():
     io_opts.add_argument("--ncbi-metadata",
                         dest="ncbi_metadata",
                         required=True,
-                        help='isolate JSON output by extract_assembly_stats for current run',
+                        help='directory output by extract_assembly_stats for current run',
                         type=str)
     io_opts.add_argument("--geneMetadataDir",
                         dest="geneMetadataDir",
                         required=True,
-                        help="JSON of gene metadata output by extract_genes for current run",
+                        help="directory of gene metadata output by extract_genes for current run",
                         type=str)
-    io_opts.add_argument("--panarooOutputDir",
-                        dest="panarooOutputDir",
+    io_opts.add_argument("--alignment-dir",
+                        dest="alignment_dir",
                         required=True,
-                        help="Directory output by panaroo for current run",
+                        help="directory of alignments output by generate_alignments for current run",
                         type=str)
     io_opts.add_argument("--accessionFile",
                         dest="accessionFile",
                         required=True,
-                        help="File of accession IDs used in the current run",
+                        help="file of accession IDs used in the current run",
                         type=str)
     io_opts.add_argument("--previous-run",
                         dest="prev_run",
@@ -48,7 +51,7 @@ def get_options():
 def mergeNCBIMetadata(current_metadata_file, prev_dir):
     with open(current_metadata_file, "r") as currentFile:
         currentIsolateJSON = currentFile.read()
-    previous_metadata_file = os.path.join(prev_dir, os.path.basename(current_metadata_file))
+    previous_metadata_file = os.path.join(prev_dir, current_metadata_file)
     with open(previous_metadata_file, "r") as previousFile:
         previousIsolateJSON = previousFile.read()
     currentIsolateDicts = json.loads(currentIsolateJSON)["information"]
@@ -61,7 +64,7 @@ def mergeNCBIKVPairs(current_KVPairs, current_biosamplePairs, prev_dir):
     # update isolate key value json
     with open(current_KVPairs, "r") as currentKVFile:
         currentKVJSON = currentKVFile.read()
-    previous_KVPairs = os.path.join(prev_dir, os.path.basename(current_KVPairs))
+    previous_KVPairs = os.path.join(prev_dir, current_KVPairs)
     with open(previous_KVPairs, "r") as previousKVFile:
         previousKVJSON = previousKVFile.read()
     currentKVDict = json.loads(currentKVJSON)
@@ -73,7 +76,7 @@ def mergeNCBIKVPairs(current_KVPairs, current_biosamplePairs, prev_dir):
     # update biosample isolate pairs json
     with open(current_biosamplePairs, "r") as currentBiosampleFile:
         currentBiosampleJSON = currentBiosampleFile.read()
-    previous_biosamplePairs = os.path.join(prev_dir, os.path.basename(current_biosamplePairs))
+    previous_biosamplePairs = os.path.join(prev_dir, current_biosamplePairs)
     with open(previous_biosamplePairs, "r") as previousBiosampleFile:
         previousBiosampleJSON = previousBiosampleFile.read()
     currentBiosampltDict = json.loads(currentBiosampleJSON)
@@ -96,20 +99,6 @@ def mergeGeneMetadata(current_geneDir, prev_dir):
     updatedGeneDict["information"] += currentGeneDicts
     with open(previous_metadataFile, "w") as updatedGeneFile:
        updatedGeneFile.write(json.dumps(updatedGeneDict))
-    # update gene: index key value pairs
-    current_panarooPairs = os.path.join(current_geneDir, "panarooPairs.json")
-    with open(current_panarooPairs, "r") as currentKVFile:
-        currentKVJSON = currentKVFile.read()
-    previous_panarooPairs = os.path.join(prev_dir, current_panarooPairs)
-    with open(previous_panarooPairs, "r") as previousKVFile:
-        previousKVJSON = previousKVFile.read()
-    currentKVDict = json.loads(currentKVJSON)
-    currentGeneIndex = max(currentKVDict.values())
-    updatedKVDict = json.loads(previousKVJSON)
-    updatedKVDict.update(currentKVDict)
-    with open(previous_panarooPairs, "w") as updatedKVFile:
-       updatedKVFile.write(json.dumps(updatedKVDict))
-    return currentGeneIndex
 
 def mergeAccessionIDs(current_accessionFile, prev_dir):
     with open(current_accessionFile, "r") as currentFile:
@@ -124,45 +113,85 @@ def mergeAccessionIDs(current_accessionFile, prev_dir):
     with open(previous_accessionFile, "w") as updatedFile:
         updatedFile.write("\n".join(updated_accessionList))
 
+def merge_alignments(current_alignment_file, previous_alignment_files, prev_dir):
+    # remove extension and split into individual gene names so alignments can be joined file by file
+    current_panaroo_label = os.path.basename(current_alignment_file).replace(".aln.fas", "").replace(".fasta", "")
+    current_splitNames = current_panaroo_label.split("~~~")
+    updated_alignment_files = []
+    for fileName in previous_alignment_files:
+        previous_panaroo_label = os.path.basename(fileName).replace(".aln.fas", "").replace(".fasta", "")
+        previous_splitNames = previous_panaroo_label.split("~~~")
+        to_merge = False
+        for name in previous_splitNames:
+            if name in current_splitNames:
+                to_merge = True
+                updated_alignment_files.append(current_alignment_file)
+        if to_merge:
+            current_geneName_set = set(current_splitNames)
+            joined_set = current_geneName_set | set(previous_splitNames)
+            updatedGeneNames = "~~~".join(list(joined_set))
+            updatedFileName = os.path.join(prev_dir, "aligned_gene_sequences", updatedGeneNames + ".aln.fas")
+            mafft_command = "mafft --quiet --retree 1 --maxiterate 0 --nofft --add "
+            mafft_command += current_alignment_file + " "
+            mafft_command += fileName + " > "
+            mafft_command += updatedFileName + " "
+            mafft_command += " && rm -rf " + fileName # remove outdated alignment file
+            subprocess.run(mafft_command, shell=True, check=True)
+            return current_alignment_file
+        else:
+            return ""
+
 def main():
     """Main function. Parses command line args and calls functions."""
     args = get_options()
 
-    if not os.path.exists(args.prev_run):
+    if not os.path.exists(os.path.join(args.prev_run, os.path.basename(args.accessionFile))):
         sys.stderr.write("\nCopying current run data into " + args.prev_run + "\n")
-        subprocess_command = "mkdir "
-        subprocess_command += args.prev_run
-        subprocess_command += " && cp -r "
+        subprocess_command = "cp -r "
         subprocess_command += args.ncbi_metadata + " "
         subprocess_command += args.geneMetadataDir + " "
-        subprocess_command += args.panarooOutputDir + " "
         subprocess_command += args.accessionFile + " "
-        subprocess_command += " previous_run"
+        subprocess_command += args.alignment_dir + " "
+        subprocess_command += args.prev_run
         subprocess.run(subprocess_command, shell=True, check=True)
     else:
         # merge metadata for isolates found in NCBI for current and previous runs
         sys.stderr.write("\nMerging current and previous NCBI isolate metadata\n")
         currentIolateMetadata = os.path.join(args.ncbi_metadata, "isolateAssemblyAttributes.json")
-        mergeNCBIMetadata(currentIolateMetadata,
-                          args.prev_run)
+        #mergeNCBIMetadata(currentIolateMetadata,
+        #                  args.prev_run)
         sys.stderr.write("\nDone\n")
         # merge key value pairs for current and previous runs
         sys.stderr.write("\nMerging current and previous NCBI key value pairs\n")
         current_indexIsolatePairs = os.path.join(args.ncbi_metadata, "indexIsolatePairs.json")
         current_biosampleIsolatePairs = os.path.join(args.ncbi_metadata, "biosampleIsolatePairs.json")
-        currentIsolateIndex = mergeNCBIKVPairs(current_indexIsolatePairs,
-                                               current_biosampleIsolatePairs,
-                                               args.prev_run)
+        #currentIsolateIndex = mergeNCBIKVPairs(current_indexIsolatePairs,
+         #                                      current_biosampleIsolatePairs,
+        #                                       args.prev_run)
         sys.stderr.write("\nDone\n")
         # merge gene metadata for current and previous runs
         sys.stderr.write("\nMerging current and previous gene metadata\n")
-        currentGeneIndex = mergeGeneMetadata(args.geneMetadataDir,
-                                             args.prev_run)
-        # merge panaroo output for current and previous runs
-        sys.stderr.write("\nMerging current and previous panaroo outputs\n")
-        previous_panarooOutput = os.path.join(args.prev_run, args.panarooOutputDir)
-        panarooCommand = "panaroo-merge -d " + args.panarooOutputDir + " " + previous_panarooOutput + " -o " + previous_panarooOutput + " -t " + str(args.n_cpu)
-        subprocess.run(panarooCommand, shell=True, check=True)
+        #mergeGeneMetadata(args.geneMetadataDir,
+        #                  args.prev_run)
+        sys.stderr.write("\nDone\n")
+        # merge mafft alignments of Panaroo output for current and previous runs
+        sys.stderr.write("\nMerging current and previous MAFFT alignments\n")
+        # parallelise alignment merge
+        current_alignment_files = glob.glob(os.path.join(args.alignment_dir, "*.aln.fas")) + glob.glob(os.path.join(args.alignment_dir, "*.fasta"))
+        previous_alignment_files = glob.glob(os.path.join(args.prev_run, "aligned_gene_sequences", "*.aln.fas")) + glob.glob(os.path.join(args.prev_run, "aligned_gene_sequences","*.fasta"))
+        current_alignment_subsets = [
+            current_alignment_files[i:i + args.n_cpu] for i in range(0, len(current_alignment_files), args.n_cpu)
+        ]
+        updated_alignment_files = []
+        for alignmentFile in tqdm(current_alignment_subsets):
+            updated_alignment_files += Parallel(n_jobs=args.n_cpu)(delayed(merge_alignments)(aln,
+                                                                                             previous_alignment_files,
+                                                                                             args.prev_run) for aln in alignmentFile)
+        # if current alignment files have not been merged with previous output, copy into prev_dir
+        updated_alignment_files = [alnFile for sublist in updated_alignment_files for alnFile in sublist]
+        for currentFile in current_alignment_files:
+            if not currentFile in updated_alignment_files:
+                copy_command = "cp " + currentFile + " " + os.path.join(args.prev_run, "aligned_gene_sequences")
         sys.stderr.write("\nDone\n")
         # merge accession IDs for current and previous runs
         sys.stderr.write("\nMerging current and previous accession IDs\n")
