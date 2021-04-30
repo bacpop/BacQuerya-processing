@@ -158,40 +158,52 @@ def main():
         # merge metadata for isolates found in NCBI for current and previous runs
         sys.stderr.write("\nMerging current and previous NCBI isolate metadata\n")
         currentIolateMetadata = os.path.join(args.ncbi_metadata, "isolateAssemblyAttributes.json")
-        #mergeNCBIMetadata(currentIolateMetadata,
-        #                  args.prev_run)
+        mergeNCBIMetadata(currentIolateMetadata,
+                          args.prev_run)
         sys.stderr.write("\nDone\n")
         # merge key value pairs for current and previous runs
         sys.stderr.write("\nMerging current and previous NCBI key value pairs\n")
         current_indexIsolatePairs = os.path.join(args.ncbi_metadata, "indexIsolatePairs.json")
         current_biosampleIsolatePairs = os.path.join(args.ncbi_metadata, "biosampleIsolatePairs.json")
-        #currentIsolateIndex = mergeNCBIKVPairs(current_indexIsolatePairs,
-         #                                      current_biosampleIsolatePairs,
-        #                                       args.prev_run)
+        currentIsolateIndex = mergeNCBIKVPairs(current_indexIsolatePairs,
+                                               current_biosampleIsolatePairs,
+                                               args.prev_run)
         sys.stderr.write("\nDone\n")
         # merge gene metadata for current and previous runs
         sys.stderr.write("\nMerging current and previous gene metadata\n")
-        #mergeGeneMetadata(args.geneMetadataDir,
-        #                  args.prev_run)
+        mergeGeneMetadata(args.geneMetadataDir,
+                          args.prev_run)
         sys.stderr.write("\nDone\n")
         # merge mafft alignments of Panaroo output for current and previous runs
         sys.stderr.write("\nMerging current and previous MAFFT alignments\n")
         # parallelise alignment merge
         current_alignment_files = glob.glob(os.path.join(args.alignment_dir, "*.aln.fas")) + glob.glob(os.path.join(args.alignment_dir, "*.fasta"))
         previous_alignment_files = glob.glob(os.path.join(args.prev_run, "aligned_gene_sequences", "*.aln.fas")) + glob.glob(os.path.join(args.prev_run, "aligned_gene_sequences","*.fasta"))
+        previous_alignment_files_cleaned = []
+        for prev_align in previous_alignment_files:
+            if not "group_" in prev_align:
+                previous_alignment_files_cleaned.append(prev_align)
         current_alignment_subsets = [
             current_alignment_files[i:i + args.n_cpu] for i in range(0, len(current_alignment_files), args.n_cpu)
         ]
         updated_alignment_files = []
         for alignmentFile in tqdm(current_alignment_subsets):
             updated_alignment_files += Parallel(n_jobs=args.n_cpu)(delayed(merge_alignments)(aln,
-                                                                                             previous_alignment_files,
+                                                                                             previous_alignment_files_cleaned,
                                                                                              args.prev_run) for aln in alignmentFile)
         # if current alignment files have not been merged with previous output, copy into prev_dir
         updated_alignment_files = [alnFile for sublist in updated_alignment_files for alnFile in sublist]
         for currentFile in current_alignment_files:
             if not currentFile in updated_alignment_files:
                 copy_command = "cp " + currentFile + " " + os.path.join(args.prev_run, "aligned_gene_sequences")
+        # genes names with a group prefix change with every run, need to re-align everytime
+        sys.stderr.write("\nGenerating MAFFT alignments for unnamed genes\n")
+        align_command = "python generate_alignments-runner.py --graph-dir "
+        align_command += os.path.join(args.prev_run, "panaroo_output")
+        align_command += " --output-dir "
+        align_command += os.path.join(args.prev_run, "aligned_gene_sequences")
+        align_command += " --post-merge --threads " + str(args.n_cpu)
+        subprocess.run(align_command, check=True, shell=True)
         sys.stderr.write("\nDone\n")
         # merge accession IDs for current and previous runs
         sys.stderr.write("\nMerging current and previous accession IDs\n")
