@@ -208,13 +208,14 @@ rule reformat_annotations:
     input:
         genome_dir=rules.unzip_genomes.output,
         annotation_dir=rules.unzip_annotations.output,
-        prodigal_dir=rules.run_prodigal.output
+        prodigal_dir=rules.run_prodigal.output,
+        indexFile=config['extract_assembly_stats']['index_file']
     params:
         threads=config['n_cpu']
     output:
         directory("panaroo_cleaned_annotations")
     shell:
-        "python panaroo_clean_inputs-runner.py -a {input.annotation_dir} -g {input.genome_dir} -p {input.prodigal_dir} -o {output} --threads {params.threads}"
+        "python panaroo_clean_inputs-runner.py -a {input.annotation_dir} -g {input.genome_dir} -p {input.prodigal_dir} --index-file {input.indexFile} -o {output} --threads {params.threads}"
 
 # run panaroo on reformatted annotations
 rule run_panaroo:
@@ -273,7 +274,6 @@ rule extract_genes:
         annotations=rules.unzip_annotations.output,
         genomes=rules.unzip_genomes.output,
         assemblyStatDir=rules.extract_assembly_stats.output,
-        #graphDir=rules.run_panaroo.output,
         merged_panaroo=rules.merge_panaroo.output
     output:
         directory("extracted_genes")
@@ -355,6 +355,7 @@ rule run_pipeline:
         retrieved_genomes=rules.retrieve_genomes.output,
         retrieved_assembly_stats=rules.retrieve_assembly_stats.output,
         merged_panaroo=rules.merge_panaroo.output,
-        aligned_genes=rules.mafft_align.output
+        aligned_genes=rules.mafft_align.output,
+        prodigal_output=rules.run_prodigal.output
     shell:
-        'rm -rf {input.retrieved_genomes} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'
+        'rm -rf {input.retrieved_genomes} {input.prodigal_output} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'

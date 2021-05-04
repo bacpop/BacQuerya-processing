@@ -1,5 +1,6 @@
 import glob
 from joblib import Parallel, delayed
+import json
 import os
 import re
 from tqdm import tqdm
@@ -29,6 +30,12 @@ def get_options():
                         dest="prodigal_dir",
                         required=True,
                         help='directory of prodigal-predicted annotation files',
+                        type=str)
+    io_opts.add_argument("-i",
+                        "--index-file",
+                        dest="index_file",
+                        required=True,
+                        help="JSON file containing integer value to start index from",
                         type=str)
     io_opts.add_argument("-o",
                         "--output-dir",
@@ -83,7 +90,8 @@ def reverse_complement(dna):
     return reversed
 
 def reformat_existing_annotations(stored_annotation,
-                                  stored_genome):
+                                  stored_genome,
+                                  index_no):
     """Reformat existing annotations for compatibility with panaroo"""
     all_region_names = []
     all_region_annotations = []
@@ -103,6 +111,10 @@ def reformat_existing_annotations(stored_annotation,
             start = int(split[3])
             # process_pokka input only looks for CDSs and returns duplicate error when the exon is split
             if split[2] == 'CDS' and (((end - start) + 1) % 3) == 0:
+                # add name for consistency if gene is unnamed
+                if not ";gene=" in split[8]:
+                    gene_list[gene_elem] = gene_list[gene_elem] + ";gene=COG_" + str(index_no)
+                    index_no += 1
                 genes.append(gene_list[gene_elem])
         # ensure gene ids are unique
         Ids= []
@@ -141,7 +153,7 @@ def reformat_existing_annotations(stored_annotation,
             continue
         cleaned_annotation = "\n".join(str(n) for n in output_cds)
         all_region_annotations.append(cleaned_annotation)
-    return all_region_names, all_region_annotations
+    return all_region_names, all_region_annotations, index_no
 
 def reformat_predicted_annotations(predicted_annotations):
     """Extract region annotation information for prodigal-predicted annotations"""
@@ -195,11 +207,16 @@ def merge_all_annotations(all_region_names,
 def concatenate_inputs(annotation_file,
                        genome_dir,
                        output_dir,
-                       prodigal_dir):
+                       prodigal_dir,
+                       index_file):
     """This function merges existing annotations with prodigal-predicted annotations and reformats them for panaroo input"""
     # import annotation and genome files
     label = ('.').join(os.path.basename(annotation_file).split('.')[:-1])
     genome_file = os.path.join(genome_dir, label + ".fna")
+    # index used to add names to unnamed genes
+    with open(index_file, "r") as indexFile:
+        indexNoDict = json.loads(indexFile.read())
+    index_no = int(indexNoDict["cogIndexNo"])
     with open(annotation_file, "r") as a:
         stored_annotation = a.read()
     with open(genome_file, "r") as g:
@@ -215,8 +232,9 @@ def concatenate_inputs(annotation_file,
     # split annotation and genome into regions
     stored_genome = stored_genome.split('>')[1:]
     stored_annotation = stored_annotation.split("##sequence-region ")[1:]
-    all_region_names, all_region_annotations = reformat_existing_annotations(stored_annotation,
-                                                                             stored_genome)
+    all_region_names, all_region_annotations, index_no = reformat_existing_annotations(stored_annotation,
+                                                                                       stored_genome,
+                                                                                       index_no)
     if add_predicted:
         # if predicted annotations exist, reformat them for compatibility
         predicted_region_names, all_predicted_annotations = reformat_predicted_annotations(predicted_annotations)
@@ -230,7 +248,10 @@ def concatenate_inputs(annotation_file,
     filename_cleaned = os.path.join(output_dir, os.path.basename(annotation_file))
     with open(filename_cleaned,'w') as o:
         o.write(annotated_file)
-    return
+    # update cog index number for subsequent runs
+    indexNoDict["cogIndexNo"] = index_no
+    with open(index_file, "w") as indexFile:
+        indexFile.write(json.dumps(indexNoDict))
 
 def main():
     """Main function. Parses command line args and calls functions."""
@@ -248,6 +269,7 @@ def main():
         Parallel(n_jobs=args.n_cpu)(delayed(concatenate_inputs)(annotation,
                                                                 args.genome_dir,
                                                                 args.output_dir,
-                                                                args.prodigal_dir) for annotation in job)
+                                                                args.prodigal_dir,
+                                                                args.index_file) for annotation in job)
 if __name__ == '__main__':
     main()
