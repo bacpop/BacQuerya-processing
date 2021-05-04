@@ -14,11 +14,13 @@ import networkx as nx
 import os
 import pandas as pd
 import re
+import requests
 import sys
 from tqdm import tqdm
+import xmltodict
 
 from BacQuerya_processing.index_gene_features import elasticsearch_isolates
-from BacQuerya_processing.panaroo_clean_inputs import reverse_complement
+from BacQuerya_processing.panaroo_clean_inputs import reverse_complement, translate
 
 def get_options():
 
@@ -95,6 +97,22 @@ def get_options():
     args = parser.parse_args()
     return (args)
 
+
+def searchPfam(proteinSequence):
+    """Search for hypothetical proteins in the Pfam database"""
+    headers= {"Expect": "", "Accept": "text/xml"}
+    parameters = { 'hmmdb' : 'pfam', 'seq': proteinSequence}
+    url = 'https://www.ebi.ac.uk/Tools/hmmer/search/hmmscan'
+    try:
+        urlResponse = requests.post(url, headers = headers, data = parameters)
+        pfamResult = xmltodict.parse(urlResponse.text)
+        if "stats" in pfamResult["opt"].keys() and pfamResult["opt"]["stats"]["@nhits"] != 0:
+            print(pfamResult)
+            return pfamResult
+    except:
+        print(pfamResult)
+    return None
+
 def generate_library(graph_dir,
                      index_no,
                      output_dir,
@@ -153,18 +171,18 @@ def generate_library(graph_dir,
             isol_label = G.graph["isolateNames"][mem]
             member_labels.append(isol_label)
             biosample_labels.append(label_accession_pairs[isol_label])
-            try:
-                gene_data_row = gene_data_json[y["geneIDs"].split(";")[mem]]
-                member_annotation_id = gene_data_row[0]
-                annotation_ids.append(member_annotation_id)
-            except:
-                print(y["geneIDs"].split(";")[mem] + "\t" + gene_names + "\n")
+            gene_data_row = gene_data_json[y["geneIDs"].split(";")[mem]]
+            member_annotation_id = gene_data_row[0]
+            annotation_ids.append(member_annotation_id)
         isolate_indices = [isolateIndexJSON[label] for label in member_labels]
         panaroo_pairs.update({y["name"] : index_no})
-        if not y["description"] == "":
+        # supplement annotation with pfam search result. Tend to be more up to date
+        if not (y["description"] == "" or y["description"] == "hypothetical protein") or y["description"] == "hyptohetical protein":
             panarooDescription = y["description"].split(";")
+            pfamResult = None
         else:
             panarooDescription = ["Hypothetical protein"]
+            pfamResult = searchPfam(y["protein"].split(";")[0])
         annotation_dict = {"panarooNames" : gene_names,
                             "panarooDescriptions" : panarooDescription,
                             "panarooFrequency": frequency,
@@ -172,7 +190,8 @@ def generate_library(graph_dir,
                             "foundIn_labels": member_labels,
                             "foundIn_indices": isolate_indices,
                             "foundIn_biosamples": biosample_labels,
-                            "member_annotation_ids": annotation_ids}
+                            "member_annotation_ids": annotation_ids,
+                            "pfam_results": pfamResult}
         updated_genes.append(annotation_dict)
         for annot_ID in annotation_ids:
             annotationID_key_updated_genes.update({annot_ID: annotation_dict})

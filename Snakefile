@@ -246,7 +246,7 @@ rule merge_panaroo:
     params:
         threads=config['n_cpu']
     output:
-        touch("panaroo_merge.done")
+        touch("merge_panaroo.done")
     run:
         if os.path.exists("previous_run"):
             shell("panaroo-merge -d {input.current_output} previous_run/panaroo_output -o previous_run/panaroo_output -t {params.threads}")
