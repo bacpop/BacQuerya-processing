@@ -166,7 +166,7 @@ def reformat_predicted_annotations(predicted_annotations):
             predicted_region_annotations = []
             for line in region_split[1:]:
                 if not ("# Model Data:" in line or line == "" or line == " "):
-                    predicted_region_annotations.append(line)
+                    predicted_region_annotations.append(line + ";product=hypothetical protein")
             if not predicted_region_annotations == []:
                 all_predicted_annotations.append("\n".join(predicted_region_annotations))
                 predicted_region_names.append(line.split("\t")[0])

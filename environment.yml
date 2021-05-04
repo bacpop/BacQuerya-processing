@@ -26,3 +26,4 @@ dependencies:
   - panaroo
   - cd-hit
   - mafft
+  - ProDy
