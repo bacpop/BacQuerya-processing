@@ -73,7 +73,7 @@ def get_options():
                         type=str)
     io_opts.add_argument("--elastic-index",
                         dest="elastic",
-                        help="don't write gene json and index directly in script",
+                        help="index gene json in elastic index",
                         action='store_true',
                         default=False)
     io_opts.add_argument("--threads",
@@ -151,12 +151,12 @@ def main():
     temp_dir = os.path.join(tempfile.mkdtemp(dir=args.output_dir), "")
     if args.type == "gene":
         if args.elastic:
-            with open(os.path.join(args.input_dir, "allIsolates.json"), "r") as inFeatures:
+            with open(os.path.join(args.input_dir, "annotatedNodes.json"), "r") as inFeatures:
                 geneString = inFeatures.read()
             isolateGeneDicts = json.loads(geneString)["information"]
             sys.stderr.write('\nBuilding elasticsearch index\n')
             elasticsearch_isolates(isolateGeneDicts,
-                                args.index_name)
+                                   args.index_name)
         # load panaroo graph and write sequence files from COG representatives
         sys.stderr.write('\nLoading panaroo graph\n')
         G = nx.read_gml(os.path.join(args.graph_dir, "final_graph.gml"))

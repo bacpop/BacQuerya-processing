@@ -152,6 +152,7 @@ BacQuerya_processing/secrets_public.py
 .snakemake
 index_isolates.done
 merge_panaroo.done
+merge_runs.done
 retrieved_genomes/
 retrieved_annotations/
 retrieved_assemblies/

@@ -95,7 +95,7 @@ def main():
                     with open(os.path.join(args.output_dir, gene_names + ".fasta"), "w") as outFile:
                         outFile.write(multiFSAline)
     else:
-        # delete group alignments if they are already present- the gene name are incorrect
+        # delete group alignments if they are already present- the gene names are incorrect
         group_files = glob.glob(os.path.join(args.output_dir, "group_*"))
         for groupFile in group_files:
             deleteFile(groupFile)

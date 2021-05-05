@@ -297,36 +297,6 @@ rule index_isolate_attributes:
     shell:
        'python index_isolate_attributes-runner.py -f {input.assemblyStatDir}/isolateAssemblyAttributes.json -e {input.ena_metadata} -i {params.index} -g {input.feature_file}'
 
-# build COBS index of gene sequences from the output of extract_genes
-rule index_gene_sequences:
-    input:
-        input_dir=rules.extract_genes.output,
-        #graph_dir=rules.run_panaroo.output,
-        merged_panaroo=rules.merge_panaroo.output,
-        fake_input=rules.index_isolate_attributes.output
-    output:
-        directory("index_genes")
-    params:
-        k_mer=config['index_sequences']['kmer_length'],
-        threads=config['n_cpu'],
-        index_type=config['index_sequences']['gene_type'],
-        elasticIndex=config['index_sequences']['elasticSearchIndex'],
-    shell:
-       'python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads} --elastic-index --index {params.elasticIndex}'
-
-# build COBS index of gene sequences from the output of extract_genes
-rule index_assembly_sequences:
-    input:
-        rules.unzip_genomes.output
-    output:
-        directory("index_assemblies")
-    params:
-        k_mer=config['index_sequences']['kmer_length'],
-        threads=config['n_cpu'],
-        index_type=config['index_sequences']['assembly_type']
-    shell:
-       'python index_gene_features-runner.py -t {params.index_type} -a {input} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
-
 # merge the current run with information from previous runs
 rule merge_runs:
     input:
@@ -340,6 +310,36 @@ rule merge_runs:
         touch("merge_runs.done")
     shell:
         'python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --accessionFile {input.currentRunAccessions} --previous-run previous_run --threads {params.threads}'
+
+# build COBS index of gene sequences from the output of extract_genes
+rule index_gene_sequences:
+    input:
+        input_dir=rules.extract_genes.output,
+        merged_runs=rules.merge_runs.output,
+        merged_panaroo=rules.merge_panaroo.output,
+        fake_input=rules.index_isolate_attributes.output
+    output:
+        directory("index_genes")
+    params:
+        k_mer=config['index_sequences']['kmer_length'],
+        threads=config['n_cpu'],
+        index_type=config['index_sequences']['gene_type'],
+        elasticIndex=config['index_sequences']['elasticSearchIndex'],
+    shell:
+       'python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
+
+# build COBS index of gene sequences from the output of extract_genes
+rule index_assembly_sequences:
+    input:
+        rules.unzip_genomes.output
+    output:
+        directory("index_assemblies")
+    params:
+        k_mer=config['index_sequences']['kmer_length'],
+        threads=config['n_cpu'],
+        index_type=config['index_sequences']['assembly_type']
+    shell:
+       'python index_gene_features-runner.py -t {params.index_type} -a {input} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
 
 # run entire pipeline and delete current run output directories when done
 rule run_pipeline:
@@ -356,6 +356,8 @@ rule run_pipeline:
         retrieved_assembly_stats=rules.retrieve_assembly_stats.output,
         merged_panaroo=rules.merge_panaroo.output,
         aligned_genes=rules.mafft_align.output,
-        prodigal_output=rules.run_prodigal.output
+        prodigal_output=rules.run_prodigal.output,
+        indexed_gene_sequences=rules.index_gene_sequences.output,
+        indexed_isolates=rules.index_isolate_attributes.output
     shell:
-        'rm -rf {input.retrieved_genomes} {input.prodigal_output} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'
+        'rm -rf {input.retrieved_genomes} {input.indexed_isolates} {input.prodigal_output} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'

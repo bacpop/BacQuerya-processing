@@ -106,11 +106,13 @@ def searchPfam(proteinSequence):
     try:
         urlResponse = requests.post(url, headers = headers, data = parameters)
         pfamResult = xmltodict.parse(urlResponse.text)
-        if "stats" in pfamResult["opt"].keys() and pfamResult["opt"]["stats"]["@nhits"] != 0:
-            print(pfamResult)
-            return pfamResult
+        if "stats" in pfamResult["opt"].keys():
+            if pfamResult["opt"]["stats"]["@nhits"] == 1:
+                match = pfamResult["opt"]["_internal"]
+                pfamDict = {"pfam_name": match["@name"], "pfam_accession": match["@acc"], "pfam_bias": match["@bias"], "pfam_description": match["@desc"], "pfam_evalue": match["@evalue"]}
+                return pfamDict
     except:
-        print(pfamResult)
+        sys.stderr.write("\nThere was a problem with sequence: " + proteinSequence + "\n")
     return None
 
 def generate_library(graph_dir,
@@ -161,7 +163,8 @@ def generate_library(graph_dir,
                 else:
                     index_no = index_no
             for key in pairs_toRemove:
-                del panaroo_pairs[key]
+                panaroo_pairs.pop(key)
+                print("\n" + str(len(panaroo_pairs)) + "\n")
         # if not all names in previous panaroo pairs then add or update information in index
         frequency = round((len(y["members"])/num_isolates)*100, 1)
         member_labels = []
@@ -177,7 +180,7 @@ def generate_library(graph_dir,
         isolate_indices = [isolateIndexJSON[label] for label in member_labels]
         panaroo_pairs.update({y["name"] : index_no})
         # supplement annotation with pfam search result. Tend to be more up to date
-        if not (y["description"] == "" or y["description"] == "hypothetical protein") or y["description"] == "hyptohetical protein":
+        if not (y["description"] == "" or y["description"] == "hypothetical protein" or y["description"] == "Hypothetical protein"):
             panarooDescription = y["description"].split(";")
             pfamResult = None
         else:
@@ -190,8 +193,9 @@ def generate_library(graph_dir,
                             "foundIn_labels": member_labels,
                             "foundIn_indices": isolate_indices,
                             "foundIn_biosamples": biosample_labels,
-                            "member_annotation_ids": annotation_ids,
-                            "pfam_results": pfamResult}
+                            "member_annotation_ids": annotation_ids}
+        if pfamResult:
+            annotation_dict.update(pfamResult)
         updated_genes.append(annotation_dict)
         for annot_ID in annotation_ids:
             annotationID_key_updated_genes.update({annot_ID: annotation_dict})
@@ -333,10 +337,10 @@ def main():
     if args.elastic:
         # directly add information to elasticindex
         sys.stderr.write('\nBuilding Elastic Search index\n')
-        elasticsearch_isolates(updated_annotations, args.index_name)
+        #elasticsearch_isolates(updated_annotations, args.index_name)
     sys.stderr.write('\nWriting gene JSON files\n')
     with open(os.path.join(args.output_dir, "annotatedNodes.json"), "w") as n:
-        n.write(json.dumps({"information":all_features}))
+        n.write(json.dumps({"information":updated_annotations}))
     # update isolate index number for subsequent runs
     indexNoDict["geneIndexNo"] = index_no
     with open(args.index_file, "w") as indexFile:
