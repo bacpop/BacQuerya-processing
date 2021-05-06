@@ -103,21 +103,45 @@ def searchPfam(proteinSequence):
     headers= {"Expect": "", "Accept": "text/xml"}
     parameters = { 'hmmdb' : 'pfam', 'seq': proteinSequence}
     url = 'https://www.ebi.ac.uk/Tools/hmmer/search/hmmscan'
+    urlResponse = requests.post(url, headers = headers, data = parameters)
     try:
-        urlResponse = requests.post(url, headers = headers, data = parameters)
         pfamResult = xmltodict.parse(urlResponse.text)
-        if "stats" in pfamResult["opt"].keys():
-            print(pfamResult)
-            if pfamResult["opt"]["stats"]["@nhits"] == 1:
-                match = pfamResult["opt"]["_internal"]
-                pfamDict = {"pfam_name": match["@name"], "pfam_accession": match["@acc"], "pfam_bias": match["@bias"], "pfam_description": match["@desc"], "pfam_evalue": match["@evalue"]}
-                return pfamDict
-            else:
-                return None
-        else:
-            return None
     except:
-        sys.stderr.write("\nThere was a problem with sequence: " + proteinSequence + "\n")
+        urlText = urlResponse.text # xml for hits include tags of integers that xmltodict does not recoginise
+        urlText = urlText.split("<")
+        cleanedText = []
+        for tag in urlText:
+            if not tag.split(" ")[0].isdigit():
+                cleanedText.append(tag)
+        xmlCleaned = "<".join(cleanedText)
+        pfamResult = xmltodict.parse(xmlCleaned)
+    if "hits" in pfamResult["opt"]["data"].keys():
+        match = pfamResult["opt"]["data"]["hits"]
+        if not isinstance(match, list):
+            pfamDict = {"pfam_names": match["@name"],
+                        "pfam_accessions": match["@acc"],
+                        "pfam_biases": match["@bias"],
+                        "pfam_descriptions": match["@desc"],
+                        "pfam_evalues": match["@evalue"]}
+        else:
+            names = []
+            accessions = []
+            biases = []
+            descriptions = []
+            evalues = []
+            for hit in match:
+                names.append(hit["@name"])
+                accessions.append(hit["@acc"])
+                biases.append(hit["@bias"])
+                descriptions.append(hit["@desc"])
+                evalues.append(hit["@evalue"])
+            pfamDict = {"pfam_names": names,
+                        "pfam_accessions": accessions,
+                        "pfam_biases": biases,
+                        "pfam_descriptions": descriptions,
+                        "pfam_evalues": evalues}
+        return pfamDict
+    return None
 
 def generate_library(graph_dir,
                      index_no,
@@ -152,6 +176,14 @@ def generate_library(graph_dir,
     else:
         panaroo_pairs = {}
         update_index_no = True
+    # A dictionary used to name unnamed input annotations
+    consistentNamesFile = os.path.join(os.path.dirname(graph_dir), os.path.basename(output_dir), "consistentNamePairs.json")
+    if os.path.exists(consistentNamesFile):
+        with open(consistentNamesFile, "r") as prevPairsFile:
+            consistenNameJSON = prevPairsFile.read()
+        consistent_names = json.loads(consistenNameJSON)
+    else:
+        consistent_names = {}
     # iterate through panaroo graph to extract gene information if node is not present in panarooPairs or has been updated
     sys.stderr.write('\nExtracting node information from Panaroo graph\n')
     for node in tqdm(G._node):
@@ -163,52 +195,63 @@ def generate_library(graph_dir,
             if not update_index_no:
                 pairs_toRemove = []
                 for k, v in panaroo_pairs.items():
-                    if any(name in k for name in splitNames):
+                    # if node name is not identical but contains previously indexed names
+                    if not gene_names == k and any(name in k for name in splitNames):
                         index_no = v
                         pairs_toRemove.append(k)
                     else:
                         index_no = index_no
                 for key in pairs_toRemove:
                     panaroo_pairs.pop(key)
-            # if not all names in previous panaroo pairs then add or update information in index
-            frequency = round((len(y["members"])/num_isolates)*100, 1)
-            member_labels = []
-            annotation_ids = []
-            biosample_labels = []
-            for mem in range(len(y["members"])):
-                isol_label = G.graph["isolateNames"][mem]
-                member_labels.append(isol_label)
-                biosample_labels.append(label_accession_pairs[isol_label])
-                gene_data_row = gene_data_json[y["geneIDs"].split(";")[mem]]
-                member_annotation_id = gene_data_row[0]
-                annotation_ids.append(member_annotation_id)
-            isolate_indices = [isolateIndexJSON[label] for label in member_labels]
-            panaroo_pairs.update({y["name"] : index_no})
-            # supplement annotation with pfam search result. Tend to be more up to date
-            if not (y["description"] == "" or y["description"] == "hypothetical protein" or y["description"] == "Hypothetical protein"):
-                panarooDescription = y["description"].split(";")
-                pfamResult = None
-            else:
-                panarooDescription = ["Hypothetical protein"]
-                pfamResult = searchPfam(y["protein"].split(";")[0])
-            annotation_dict = {"panarooNames" : gene_names,
-                                "panarooDescriptions" : panarooDescription,
-                                "panarooFrequency": frequency,
-                                "gene_index": index_no,
-                                "foundIn_labels": member_labels,
-                                "foundIn_indices": isolate_indices,
-                                "foundIn_biosamples": biosample_labels,
-                                "member_annotation_ids": annotation_ids}
-            if pfamResult:
-                annotation_dict.update(pfamResult)
-            updated_genes.append(annotation_dict)
-            for annot_ID in annotation_ids:
-                annotationID_key_updated_genes.update({annot_ID: annotation_dict})
-            if update_index_no:
-                index_no += 1
+            # only index if the node in its current state has not been indexed before
+            if not index_no in panaroo_pairs.values():
+                # if not all names in previous panaroo pairs then add or update information in index
+                member_labels = []
+                annotation_ids = []
+                biosample_labels = []
+                for mem in range(len(y["members"])):
+                    isol_label = G.graph["isolateNames"][mem]
+                    member_labels.append(isol_label)
+                    biosample_labels.append(label_accession_pairs[isol_label])
+                    gene_data_row = gene_data_json[y["geneIDs"].split(";")[mem]]
+                    member_annotation_id = gene_data_row[0]
+                    annotation_ids.append(member_annotation_id)
+                isolate_indices = [isolateIndexJSON[label] for label in member_labels]
+                panaroo_pairs.update({y["name"] : index_no})
+                 # apply a consistent name if all annotations are named with an UNNAMED_ prefix
+                if all("UNNAMED_" in name for name in splitNames) or "group_" in gene_names or "~~~" in gene_names:
+                    consistent_names.update({index_no: "COG_" + str(index_no)})
+                # supplement annotation with pfam search result. Tend to be more up to date
+                if not (y["description"] == "" or y["description"] == "hypothetical protein" or y["description"] == "Hypothetical protein"):
+                    panarooDescription = y["description"].split(";")
+                    pfamResult = None
+                else:
+                    panarooDescription = ["Hypothetical protein"]
+                    pfamResult = searchPfam(y["protein"].split(";")[0])
+                annotation_dict = {"panarooNames" : gene_names,
+                                    "panarooDescriptions" : panarooDescription,
+                                    "gene_index": index_no,
+                                    "foundIn_labels": member_labels,
+                                    "foundIn_indices": isolate_indices,
+                                    "foundIn_biosamples": biosample_labels,
+                                    "member_annotation_ids": annotation_ids}
+                if pfamResult:
+                    annotation_dict.update(pfamResult)
+                if not index_no in consistent_names.keys():
+                    consistent_name = gene_names
+                else:
+                    consistent_name = consistent_names[index_no]
+                annotation_dict.update({"consistentNames": consistent_name})
+                updated_genes.append(annotation_dict)
+                for annot_ID in annotation_ids:
+                    annotationID_key_updated_genes.update({annot_ID: annotation_dict})
+                if update_index_no:
+                    index_no += 1
     # write name, index pairs in graph for COBS indexing in index_gene_features
     with open(os.path.join(output_dir, "panarooPairs.json"), "w") as o:
         o.write(json.dumps(panaroo_pairs))
+    with open(os.path.join(output_dir, "consistentNamePairs.json"), "w") as c:
+        c.write(json.dumps(consistent_names))
     return annotationID_key_updated_genes, updated_genes, index_no
 
 def build_gff_jsons(gff_file,
@@ -275,12 +318,12 @@ def append_gene_indices(isolate_file, all_features):
             if annotation_line["isolateName"] == isolateMetadataName:
                 if "panarooNames" in annotation_line.keys():
                     isolate_gene_indices.append(annotation_line["gene_index"])
-                    isolate_gene_names.append(annotation_line["panarooNames"])
+                    isolate_gene_names.append(annotation_line["consistentNames"])
                 if "featureIndex" in annotation_line.keys():
                     isolate_non_CDS.append(annotation_line["featureIndex"])
         if not len(isolate_gene_names) == 0:
             #isolate_dict["information"][isol_name]["geneIndices"] = isolate_gene_indices
-            isolate_dict["information"][isol_name]["panarooNames"] = isolate_gene_names
+            isolate_dict["information"][isol_name]["consistentNames"] = isolate_gene_names
             #isolate_dict["information"][isol_name]["nonCDSIndices"] = isolate_non_CDS
     with open(isolate_file, "w") as o:
         o.write(json.dumps(isolate_dict))

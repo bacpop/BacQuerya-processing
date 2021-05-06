@@ -166,13 +166,17 @@ def main():
         panarooPairsUpdated = []
         representative_sequences = []
         sys.stderr.write('\nWriting gene-specific files for COBS indexing\n')
+        # need to apply same constraints as those in extract_genes.py
         for node in tqdm(G._node):
             y = G._node[node]
             gene_name = y["name"]
-            dna = y["dna"].split(";")
-            gene_index = pairs[y["name"]]
-            for seq in range(len(dna)):
-                representative_sequences.append({"gene_index": str(gene_index) + "_v" + str(seq), "sequence": dna[seq]})
+            splitNames = gene_name.split("~~~")
+            # need to make sure we're not indexing annotations that have been predicted by prodigal and are not supported by existing annotations
+            if not all("PRED_" in name for name in splitNames):
+                dna = y["dna"].split(";")
+                gene_index = pairs[y["name"]]
+                for seq in range(len(dna)):
+                    representative_sequences.append({"gene_index": str(gene_index) + "_v" + str(seq), "sequence": dna[seq]})
         job_list = [
             representative_sequences[i:i + args.n_cpu] for i in range(0, len(representative_sequences), args.n_cpu)
         ]

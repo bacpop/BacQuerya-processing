@@ -90,7 +90,7 @@ def main():
                         outFile.write("\n".join(multiFSAline))
                 else:
                     isol_label = G.graph["isolateNames"][y["members"][0]]
-                    member_sequence = gene_data_json[y["geneIDs"]]
+                    member_sequence = gene_data_json[y["geneIDs"].split(";")[0]] # just in case we are looking at a paralog
                     multiFSAline = ">" + isol_label + "\n" + member_sequence
                     with open(os.path.join(args.output_dir, gene_names + ".fasta"), "w") as outFile:
                         outFile.write(multiFSAline)
@@ -103,7 +103,7 @@ def main():
         for node in tqdm(G._node):
             y = G._node[node]
             gene_names = y["name"]
-            # unnamed genes are assigned non-consistent names with a group_ prefix
+            # unnamed genes are assigned inconsistent names with a group_ prefix
             if "group_" in y["name"]:
                 if not len(y["members"]) == 1:
                     multiFSAline = []
@@ -117,7 +117,7 @@ def main():
                         outFile.write("\n".join(multiFSAline))
                 else:
                     isol_label = G.graph["isolateNames"][y["members"][0]]
-                    member_sequence = gene_data_json[y["geneIDs"]]
+                    member_sequence = gene_data_json[y["geneIDs"].split(";")[0]] # just in case we are looking at a paralog
                     multiFSAline = ">" + isol_label + "\n" + member_sequence
                     with open(os.path.join(args.output_dir, gene_names + ".fasta"), "w") as outFile:
                         outFile.write(multiFSAline)
