@@ -107,6 +107,7 @@ def searchPfam(proteinSequence):
         urlResponse = requests.post(url, headers = headers, data = parameters)
         pfamResult = xmltodict.parse(urlResponse.text)
         if "stats" in pfamResult["opt"].keys():
+            print(pfamResult)
             if pfamResult["opt"]["stats"]["@nhits"] == 1:
                 match = pfamResult["opt"]["_internal"]
                 pfamDict = {"pfam_name": match["@name"], "pfam_accession": match["@acc"], "pfam_bias": match["@bias"], "pfam_description": match["@desc"], "pfam_evalue": match["@evalue"]}
@@ -151,14 +152,6 @@ def generate_library(graph_dir,
     else:
         panaroo_pairs = {}
         update_index_no = True
-    # A dictionary used to name unnamed input annotations
-    consistentNamesFile = os.path.join(os.path.dirname(graph_dir), os.path.basename(output_dir), "consistentNamePairs.json")
-    if os.path.exists(consistentNamesFile):
-        with open(consistentNamesFile, "r") as prevPairsFile:
-            consistenNameJSON = prevPairsFile.read()
-        consistent_names = json.loads(consistenNameJSON)
-    else:
-        consistent_names = {}
     # iterate through panaroo graph to extract gene information if node is not present in panarooPairs or has been updated
     sys.stderr.write('\nExtracting node information from Panaroo graph\n')
     for node in tqdm(G._node):
@@ -191,9 +184,6 @@ def generate_library(graph_dir,
                 annotation_ids.append(member_annotation_id)
             isolate_indices = [isolateIndexJSON[label] for label in member_labels]
             panaroo_pairs.update({y["name"] : index_no})
-            # apply a consistent name if all annotations are named with an UNNAMED_ prefix
-            if all("UNNAMED_" in name for name in splitNames) or "group_" in gene_names:
-                consistent_names.update({index_no: "COG_" + str(index_no)})
             # supplement annotation with pfam search result. Tend to be more up to date
             if not (y["description"] == "" or y["description"] == "hypothetical protein" or y["description"] == "Hypothetical protein"):
                 panarooDescription = y["description"].split(";")
@@ -211,11 +201,6 @@ def generate_library(graph_dir,
                                 "member_annotation_ids": annotation_ids}
             if pfamResult:
                 annotation_dict.update(pfamResult)
-            if not index_no in consistent_names.keys():
-                consistent_name = gene_names
-            else:
-                consistent_name = consistent_names[index_no]
-            annotation_dict.update({"consistentName": consistent_name})
             updated_genes.append(annotation_dict)
             for annot_ID in annotation_ids:
                 annotationID_key_updated_genes.update({annot_ID: annotation_dict})
@@ -224,8 +209,6 @@ def generate_library(graph_dir,
     # write name, index pairs in graph for COBS indexing in index_gene_features
     with open(os.path.join(output_dir, "panarooPairs.json"), "w") as o:
         o.write(json.dumps(panaroo_pairs))
-    with open(os.path.join(output_dir, "consistentNamePairs.json"), "w") as c:
-        c.write(json.dumps(consistent_names))
     return annotationID_key_updated_genes, updated_genes, index_no
 
 def build_gff_jsons(gff_file,
@@ -292,12 +275,12 @@ def append_gene_indices(isolate_file, all_features):
             if annotation_line["isolateName"] == isolateMetadataName:
                 if "panarooNames" in annotation_line.keys():
                     isolate_gene_indices.append(annotation_line["gene_index"])
-                    isolate_gene_names.append(annotation_line["consistentName"])
+                    isolate_gene_names.append(annotation_line["panarooNames"])
                 if "featureIndex" in annotation_line.keys():
                     isolate_non_CDS.append(annotation_line["featureIndex"])
         if not len(isolate_gene_names) == 0:
             #isolate_dict["information"][isol_name]["geneIndices"] = isolate_gene_indices
-            isolate_dict["information"][isol_name]["consistentNames"] = isolate_gene_names
+            isolate_dict["information"][isol_name]["panarooNames"] = isolate_gene_names
             #isolate_dict["information"][isol_name]["nonCDSIndices"] = isolate_non_CDS
     with open(isolate_file, "w") as o:
         o.write(json.dumps(isolate_dict))
