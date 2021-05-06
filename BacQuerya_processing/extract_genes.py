@@ -342,7 +342,7 @@ def main():
     if args.elastic:
         # directly add information to elasticindex
         sys.stderr.write('\nBuilding Elastic Search index\n')
-        #elasticsearch_isolates(updated_annotations, args.index_name)
+        elasticsearch_isolates(updated_annotations, args.index_name)
     sys.stderr.write('\nWriting gene JSON files\n')
     with open(os.path.join(args.output_dir, "annotatedNodes.json"), "w") as n:
         n.write(json.dumps({"information":updated_annotations}))
