@@ -1,4 +1,5 @@
 import glob
+from joblib import Parallel, delayed
 import os
 import subprocess
 from tqdm import tqdm
@@ -98,8 +99,6 @@ rule retrieve_ena_reads:
     output:
         directory("retrieved_ena_reads")
     run:
-        from joblib import Parallel, delayed
-
         def download_read(accession, output_dir):
             shell_command = "wget --no-check-certificate --directory-prefix " + output_dir + " " + accession
             subprocess.run(shell_command, check=True, shell=True)
@@ -203,16 +202,24 @@ rule run_prodigal:
     input:
         genome_dir=rules.unzip_genomes.output,
         annotation_dir=rules.unzip_annotations.output
+    params:
+        threads=config['n_cpu']
     output:
         directory("prodigal_predicted_annotations")
     run:
+        def multithread_prodigal(assembly, output_dir):
+            output_file = os.path.join(output_dir, os.path.splitext(os.path.basename(assembly))[0] + ".gff")
+            shell_command = "mkdir -p " + output_dir + " && prodigal -f gff -q -i " + assembly + " -o " + output_file
+            subprocess.run(shell_command, shell=True, check=True)
+
         assemblies = glob.glob(os.path.join(input.genome_dir[0], "*.fna"))
         existing_annotations = glob.glob(os.path.join(input.annotation_dir[0], "*.gff"))
-        existing_annotations = [os.path.basename(filename).split(".gff")[0] for filename in existing_annotations]
-        for assembly in tqdm(assemblies):
-            #if not os.path.basename(assembly).split(".fna")[0] in existing_annotations:
-            output_file = os.path.join(output[0], os.path.splitext(os.path.basename(assembly))[0] + ".gff")
-            shell("mkdir -p {output} && prodigal -f gff -q -i " + assembly + " -o " + output_file)
+        job_list = [
+            assemblies[i:i + params.threads] for i in range(0, len(assemblies), params.threads)
+        ]
+        for job in tqdm(job_list):
+            Parallel(n_jobs=params.threads)(delayed(multithread_prodigal)(assem,
+                                                                          output[0]) for assem in job)
 
 # reformat annotation files for panaroo input
 rule reformat_annotations:
