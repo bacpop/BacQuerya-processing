@@ -99,7 +99,7 @@ rule retrieve_ena_reads:
         with open(input[0], "r") as f:
             run_accessions = f.read().splitlines()
         for access in run_accessions:
-            shell_command = "wget --directory-prefix " + output[0] + " " + access
+            shell_command = "wget --no-check-certificate --directory-prefix " + output[0] + " " + access
             shell(shell_command)
     #'ascp -QT -l 300m -P33001 -i ~/.aspera/connect/etc/asperaweb_id_dsa.openssh era-fasp@fasp.sra.ebi.ac.uk:vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz {output}' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_1.fastq.gz
 

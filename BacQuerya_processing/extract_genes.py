@@ -191,7 +191,7 @@ def generate_library(graph_dir,
                 # if not the index no will be the current index no in index_values
                 for key, value in panaroo_pairs.items():
                     if any(name in value["panarooNames"] for name in splitNames):
-                        index_no = key
+                        index_no = int(key)
                         all_names_set.add(value["consistentNames"])
                     else:
                         index_no = index_no
@@ -227,7 +227,7 @@ def generate_library(graph_dir,
                     annotation_dict.update(pfamResult)
                 # apply a consistent name if all annotations are named with an UNNAMED_ prefix
                 consistent_name = "COG_" + str(index_no)
-                if not all("UNNAMED_" in name for name in splitNames or "PRED_" in name for name in splitNames) or "group_" in gene_names:
+                if not (all("UNNAMED_" in name for name in splitNames or "PRED_" in name for name in splitNames) or "group_" in gene_names):
                     # sets the consistent name to one of the splitnames
                     for name in splitNames:
                         if not ("PRED_" in name or "UNNAMED_" in name or name in all_names_set): # prevent duplicate names being returned from search
