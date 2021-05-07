@@ -163,7 +163,6 @@ def main():
         with open(os.path.join(os.path.dirname(args.graph_dir), "extracted_genes", "panarooPairs.json"), "r") as jsonFile:
             pairString = jsonFile.read()
         pairs = json.loads(pairString)
-        panarooPairsUpdated = []
         representative_sequences = []
         sys.stderr.write('\nWriting gene-specific files for COBS indexing\n')
         # need to apply same constraints as those in extract_genes.py
@@ -174,7 +173,9 @@ def main():
             # need to make sure we're not indexing annotations that have been predicted by prodigal and are not supported by existing annotations
             if not all("PRED_" in name for name in splitNames):
                 dna = y["dna"].split(";")
-                gene_index = pairs[y["name"]]
+                for key in pairs.keys():
+                    if pairs[key]["panarooNames"] == y["name"]:
+                        gene_index = key
                 for seq in range(len(dna)):
                     representative_sequences.append({"gene_index": str(gene_index) + "_v" + str(seq), "sequence": dna[seq]})
         job_list = [

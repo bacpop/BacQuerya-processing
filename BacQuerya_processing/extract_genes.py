@@ -176,16 +176,9 @@ def generate_library(graph_dir,
     else:
         panaroo_pairs = {}
         update_index_no = True
-    # A dictionary used to name unnamed input annotations
-    consistentNamesFile = os.path.join(os.path.dirname(graph_dir), os.path.basename(output_dir), "consistentNamePairs.json")
-    if os.path.exists(consistentNamesFile):
-        with open(consistentNamesFile, "r") as prevPairsFile:
-            consistenNameJSON = prevPairsFile.read()
-        consistent_names = json.loads(consistenNameJSON)
-    else:
-        consistent_names = {}
     # iterate through panaroo graph to extract gene information if node is not present in panarooPairs or has been updated
     sys.stderr.write('\nExtracting node information from Panaroo graph\n')
+    all_names_set = set()
     for node in tqdm(G._node):
         y = G._node[node]
         gene_names = y["name"]
@@ -193,18 +186,17 @@ def generate_library(graph_dir,
         # need to make sure we're not indexing annotations that have been predicted by prodigal and are not supported by existing annotations
         if not all("PRED_" in name for name in splitNames):
             if not update_index_no:
-                pairs_toRemove = []
-                for k, v in panaroo_pairs.items():
-                    # if node name is not identical but contains previously indexed names
-                    if not gene_names == k and any(name in k for name in splitNames):
-                        index_no = v
-                        pairs_toRemove.append(k)
+                # this checks if any of the nodes gene names are in the panaroo pair values
+                # if so the index no will be the key
+                # if not the index no will be the current index no in index_values
+                for key, value in panaroo_pairs.items():
+                    if any(name in value["panarooNames"] for name in splitNames):
+                        index_no = key
+                        all_names_set.add(value["consistentNames"])
                     else:
                         index_no = index_no
-                for key in pairs_toRemove:
-                    panaroo_pairs.pop(key)
-            # only index if the node in its current state has not been indexed before
-            if not index_no in panaroo_pairs.values():
+            # skips indexing nodes that have identical panarooNames and have already been indexed
+            if not any(gene_names in panaroo_pairs[key]["panarooNames"] for key in panaroo_pairs.keys()):
                 # if not all names in previous panaroo pairs then add or update information in index
                 member_labels = []
                 annotation_ids = []
@@ -217,10 +209,6 @@ def generate_library(graph_dir,
                     member_annotation_id = gene_data_row[0]
                     annotation_ids.append(member_annotation_id)
                 isolate_indices = [isolateIndexJSON[label] for label in member_labels]
-                panaroo_pairs.update({y["name"] : index_no})
-                 # apply a consistent name if all annotations are named with an UNNAMED_ prefix
-                if all("UNNAMED_" in name for name in splitNames) or "group_" in gene_names or "~~~" in gene_names:
-                    consistent_names.update({index_no: "COG_" + str(index_no)})
                 # supplement annotation with pfam search result. Tend to be more up to date
                 if not (y["description"] == "" or y["description"] == "hypothetical protein" or y["description"] == "Hypothetical protein"):
                     panarooDescription = y["description"].split(";")
@@ -229,29 +217,31 @@ def generate_library(graph_dir,
                     panarooDescription = ["Hypothetical protein"]
                     pfamResult = searchPfam(y["protein"].split(";")[0])
                 annotation_dict = {"panarooNames" : gene_names,
-                                    "panarooDescriptions" : panarooDescription,
-                                    "gene_index": index_no,
-                                    "foundIn_labels": member_labels,
-                                    "foundIn_indices": isolate_indices,
-                                    "foundIn_biosamples": biosample_labels,
-                                    "member_annotation_ids": annotation_ids}
+                                   "panarooDescriptions" : panarooDescription,
+                                   "gene_index": index_no,
+                                   "foundIn_labels": member_labels,
+                                   "foundIn_indices": isolate_indices,
+                                   "foundIn_biosamples": biosample_labels,
+                                   "member_annotation_ids": annotation_ids}
                 if pfamResult:
                     annotation_dict.update(pfamResult)
-                if not index_no in consistent_names.keys():
-                    consistent_name = gene_names
-                else:
-                    consistent_name = consistent_names[index_no]
+                # apply a consistent name if all annotations are named with an UNNAMED_ prefix
+                consistent_name = "COG_" + str(index_no)
+                if not all("UNNAMED_" in name for name in splitNames or "PRED_" in name for name in splitNames) or "group_" in gene_names:
+                    # sets the consistent name to one of the splitnames
+                    for name in splitNames:
+                        if not ("PRED_" in name or "UNNAMED_" in name or name in all_names_set): # prevent duplicate names being returned from search
+                            consistent_name = name
+                all_names_set.add(consistent_name)
+                panaroo_pairs.update({index_no: {"panarooNames": gene_names, "consistentNames": consistent_name}})
                 annotation_dict.update({"consistentNames": consistent_name})
                 updated_genes.append(annotation_dict)
                 for annot_ID in annotation_ids:
                     annotationID_key_updated_genes.update({annot_ID: annotation_dict})
-                if update_index_no:
-                    index_no += 1
+                index_no += 1
     # write name, index pairs in graph for COBS indexing in index_gene_features
     with open(os.path.join(output_dir, "panarooPairs.json"), "w") as o:
         o.write(json.dumps(panaroo_pairs))
-    with open(os.path.join(output_dir, "consistentNamePairs.json"), "w") as c:
-        c.write(json.dumps(consistent_names))
     return annotationID_key_updated_genes, updated_genes, index_no
 
 def build_gff_jsons(gff_file,

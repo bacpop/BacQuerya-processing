@@ -87,7 +87,7 @@ rule retrieve_ena_read_metadata:
         email=config['extract_entrez_information']['email'],
         threads=config['n_cpu']
     shell:
-       'python extract_read_metadata-runner.py -s {input} -r ena -i {params.index} -e {params.email} --threads {params.threads} -o {output.output_dir}'
+       'python extract_read_metadata-runner.py -s {input} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir}'
 
 # retrieve raw reads from ENA
 rule retrieve_ena_reads:
@@ -266,7 +266,7 @@ rule extract_assembly_stats:
         threads=config['n_cpu'],
         email=config['extract_entrez_information']['email']
     shell:
-       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output}/isolateAssemblyAttributes.json -k {output}/indexIsolatePairs.json -b {output}/biosampleIsolatePairs.json -e {params.email} --threads {params.threads}'
+       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output}/isolateAssemblyAttributes.json -k {output}/indexIsolatePairs.json -b {output}/biosampleIsolatePairs.json -e {params.email} --previous-run previous_run --threads {params.threads}'
 
 # build gene JSONS from GFF and sequence files
 rule extract_genes:

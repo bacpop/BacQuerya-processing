@@ -55,6 +55,11 @@ def get_options():
                         required=True,
                         help="specify email for entrez access",
                         type=str)
+    io_opts.add_argument("--previous-run",
+                        dest="previous_dir",
+                        required=True,
+                        help="directory name of previous snakemake outputs",
+                        type=str)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
                         required=False,
@@ -161,8 +166,19 @@ def main():
     with open(args.index_file, "r") as indexFile:
         indexNoDict = json.loads(indexFile.read())
     index_no = int(indexNoDict["isolateIndexNo"])
+    # if previous isolate_kv pairs exist use that to prevent duplication of isolates in index
+    previousRunFile = os.path.join(args.previous_dir, args.output_dir, "indexIsolatePairs.json")
+    if os.path.exists(previousRunFile):
+        with open(previousRunFile) as prevKeys:
+            indexedIsolateDict = json.loads(prevKeys.read())
+    else:
+        indexedIsolateDict = {}
     for access in range(len(sample_list)):
         if not sample_list[access] == "":
+            if sample_list[access] in indexedIsolateDict.keys():
+                index_no = indexedIsolateDict[sample_list[access]]
+            else:
+                index_no = index_no
             assigned_index = {"isolate_index": index_no,
                               "read_accession": sample_list[access]}
             index_no += 1
@@ -170,7 +186,6 @@ def main():
     job_list = [
         indexed_accessions[i:i + args.n_cpu] for i in range(0, len(indexed_accessions), args.n_cpu)
     ]
-    indexIsolateDict = {}
     if args.read_source == "ena":
         access_data = []
         for job in tqdm(job_list):

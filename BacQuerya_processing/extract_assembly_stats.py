@@ -66,6 +66,11 @@ def get_options():
                         required=True,
                         help="specify email for entrez access",
                         type=str)
+    io_opts.add_argument("--previous-run",
+                        dest="previous_dir",
+                        required=True,
+                        help="directory name of previous snakemake outputs",
+                        type=str)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
                         required=False,
@@ -151,17 +156,28 @@ def main():
     if not os.path.exists(os.path.dirname(args.output_file)):
         os.mkdir((os.path.dirname(args.output_file)))
     assembly_reports = glob.glob(args.assemblies + '/*_assembly_stats.txt')
-    indexedIsolateDict = {}
     indexed_assemblies = []
     with open(args.index_file, "r") as indexFile:
         indexNoDict = json.loads(indexFile.read())
     index_no = int(indexNoDict["isolateIndexNo"])
+    # if previous isolate_kv pairs exist use that to prevent duplication of isolates in index
+    previousRunFile = os.path.join(args.previous_dir, args.isolateKeys)
+    if os.path.exists(previousRunFile):
+        with open(previousRunFile) as prevKeys:
+            indexedIsolateDict = json.loads(prevKeys.read())
+    else:
+        indexedIsolateDict = {}
     for assembly in assembly_reports:
+        isol_label = os.path.basename(assembly).replace("_assembly_stats.txt", "")
+        if isol_label in indexedIsolateDict.keys():
+            index_no = indexedIsolateDict[isol_label]
+        else:
+            index_no = index_no
         assigned_index = {"isolate_index": index_no,
                           "assembly file": assembly}
         index_no += 1
         indexed_assemblies.append(assigned_index)
-        indexedIsolateDict.update({os.path.basename(assembly).replace("_assembly_stats.txt", "") : index_no})
+        indexedIsolateDict.update({isol_label: index_no})
     sys.stderr.write('\nConverting assembly stat files to JSON\n')
     job_list = [
         indexed_assemblies[i:i + args.n_cpu] for i in range(0, len(indexed_assemblies), args.n_cpu)
