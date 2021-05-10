@@ -246,17 +246,6 @@ rule run_panaroo:
     shell:
         "panaroo -i {input}/*.gff -o {output} --clean-mode sensitive -t {params.threads}"
 
-# generate mafft alignments for panaroo output
-rule mafft_align:
-    input:
-        rules.run_panaroo.output
-    params:
-        threads=config['n_cpu']
-    output:
-        directory("aligned_gene_sequences")
-    shell:
-        "python generate_alignments-runner.py --graph-dir {input} --output-dir {output} --threads {params.threads}"
-
 # merge current panaroo output with previous panaroo outputs
 rule merge_panaroo:
     input:
@@ -301,6 +290,18 @@ rule extract_genes:
         index_name=config['index_sequences']['elasticSearchIndex']
     shell:
        'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g previous_run/panaroo_output -j {input.assemblyStatDir}/isolateAssemblyAttributes.json -k {input.assemblyStatDir}/indexIsolatePairs.json -i {params.index} -o {output} --threads {params.threads} --elastic-index --index-name {params.index_name} --biosampleJSON {input.assemblyStatDir}/biosampleIsolatePairs.json'
+
+# generate mafft alignments for panaroo output
+rule mafft_align:
+    input:
+        graph_dir=rules.run_panaroo.output,
+        extracted_genes=rules.extract_genes.output
+    params:
+        threads=config['n_cpu']
+    output:
+        directory("aligned_gene_sequences")
+    shell:
+        "python generate_alignments-runner.py --graph-dir {input.graph_dir} --output-dir {output} --threads {params.threads}"
 
 # append isolate attributes to elasticsearch index
 rule index_isolate_attributes:

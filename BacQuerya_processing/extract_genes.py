@@ -107,7 +107,8 @@ def searchPfam(proteinSequence):
     try:
         pfamResult = xmltodict.parse(urlResponse.text)
     except:
-        urlText = urlResponse.text # xml for hits include tags of integers that xmltodict does not recoginise
+        urlText = urlResponse.text
+        # xml for hits include tags of integers that xmltodict does not recoginise
         urlText = urlText.split("<")
         cleanedText = []
         for tag in urlText:
@@ -143,6 +144,102 @@ def searchPfam(proteinSequence):
         return pfamDict
     return None
 
+def update_panaroo_outputs(G,
+                           panarooNames,
+                           updatedPanarooNames,
+                           updatedDescriptions,
+                           graph_dir,
+                           gene_data):
+    """Use consistentNames/ pfam names and pfam descriptions to update all relevant panaroo outputs.
+       This makes it significantly easier to keep track of everything that's going on"""
+    sys.stderr.write('\nUpdating Panaroo graph\n')
+    # let's start by updating the graph itself
+    cluster_name_dict = {}
+    for node in tqdm(G._node):
+        y = G._node[node]
+        gene_names = y["name"]
+        splitNames = gene_names.split("~~~")
+        if not all("PRED_" in name for name in splitNames):
+            node_index = panarooNames.index(gene_names)
+            node_gene_name = updatedPanarooNames[node_index]
+            node_annotation = updatedDescriptions[node_index]
+            # used to update gene_data.csv
+            cluster_ids = y["geneIDs"].split(";")
+            for clus in cluster_ids:
+                cluster_name_dict.update({clus: {"name": node_gene_name, "description": node_annotation}})
+            # update node name
+            y["name"] = node_gene_name
+            y["description"] = node_annotation
+    # overwrite the previous graph
+    sys.stderr.write('\nUpdating all gene_data.csv file\n')
+    nx.write_gml(G, os.path.join(graph_dir, "final_graph.gml"))
+    # update gene_data.csv
+    for k, v in tqdm(cluster_name_dict.items()):
+        annotation_row_index = list(gene_data["clustering_id"]).index(k)
+        gene_data["gene_name"][annotation_row_index] = cluster_name_dict[k]["name"]
+        gene_data["description"][annotation_row_index] = cluster_name_dict[k]["description"]
+    gene_data.to_csv(os.path.join(graph_dir, "gene_data.csv"), index=False)
+    # update gene_presence_absence.csv and gene_presence_absence.rtab
+    sys.stderr.write('\nUpdating gene_presence_absence files\n')
+    with open(os.path.join(graph_dir, "gene_presence_absence.Rtab"), "r") as inRtab:
+        rtab_pres_abs = inRtab.read().splitlines()
+    gene_presence_absence = pd.read_csv(os.path.join(graph_dir, "gene_presence_absence.csv"))
+    roary_presence_absence = pd.read_csv(os.path.join(graph_dir, "gene_presence_absence_roary.csv"))
+    with open(os.path.join(graph_dir, "pan_genome_reference.fa"), "r") as refFile:
+        pan_genome_reference = refFile.read().split(">")
+    with open(os.path.join(graph_dir, "struct_presence_absence.Rtab"), "r") as inStruct:
+        struct_pres_abs = inStruct.read().splitlines()
+    updated_cog_dict = {}
+    for name in tqdm(range(len(panarooNames))):
+        # update csv file
+        annotation_row_index = list(gene_presence_absence["Gene"]).index(panarooNames[name])
+        non_unique = ";".join(updatedPanarooNames[name].split("~~~"))
+        gene_presence_absence["Gene"][annotation_row_index] = updatedPanarooNames[name]
+        gene_presence_absence["Non-unique Gene name"][annotation_row_index] = non_unique
+        gene_presence_absence["Annotation"][annotation_row_index] = updatedDescriptions[name]
+        # update roary csv file
+        roary_row_index = list(roary_presence_absence["Gene"]).index(panarooNames[name])
+        roary_presence_absence["Gene"][roary_row_index] = updatedPanarooNames[name]
+        roary_presence_absence["Non-unique Gene name"][roary_row_index] = non_unique
+        roary_presence_absence["Annotation"][roary_row_index] = updatedDescriptions[name]
+        updated_cog_dict.update({panarooNames[name]: updatedPanarooNames[name]})
+    sys.stderr.write("\nWriting csv files\n")
+    gene_presence_absence.to_csv(os.path.join(graph_dir, "gene_presence_absence.csv"), index=False)
+    roary_presence_absence.to_csv(os.path.join(graph_dir, "gene_presence_absence_roary.csv"), index=False)
+    sys.stderr.write('\nUpdating pan_genome_reference.fa and struct_presence_absence.Rtab\n')
+    cleaned_rtab_pres_abs = []
+    cleaned_struct_pres_abs = []
+    cleaned_pan_genome_reference = []
+    for key, value in tqdm(updated_cog_dict.items()):
+        # update RTAB file
+        for line in rtab_pres_abs:
+            cog_names = line.split("\t")[0]
+            if key in cog_names:
+                line.replace(cog_names,value)
+            cleaned_rtab_pres_abs.append(line)
+        # update pan_genome_reference.fa
+        for line in pan_genome_reference:
+            cog_names = line.split("\n")[0]
+            if key in cog_names:
+                line.replace(cog_names, value)
+            cleaned_pan_genome_reference.append(line)
+        # update struct_presence_absence.rtab
+        for line in struct_pres_abs:
+            cog_names = line.split("\n")[0]
+            if key in cog_names:
+                line.replace(cog_names, value)
+            cleaned_struct_pres_abs.append(line)
+    sys.stderr.write('\nWriting Rtab and fa outputs\n')
+    cleaned_rtab_pres_abs = "\n".join(cleaned_rtab_pres_abs)
+    cleaned_pan_genome_reference = ">".join(cleaned_pan_genome_reference)
+    cleaned_struct_pres_abs = "\n".join(cleaned_struct_pres_abs)
+    with open(os.path.join(graph_dir, "gene_presence_absence.Rtab"), "w") as outRtab:
+        outRtab.write(cleaned_rtab_pres_abs)
+    with open(os.path.join(graph_dir, "pan_genome_reference.fa"), "w") as outRefFile:
+        outRefFile.write(cleaned_pan_genome_reference))
+    with open(os.path.join(graph_dir, "struct_presence_absence.Rtab"), "w") as outStructFile:
+        outStructFile.write(cleaned_struct_pres_abs)
+
 def generate_library(graph_dir,
                      index_no,
                      output_dir,
@@ -160,8 +257,6 @@ def generate_library(graph_dir,
         sequence = gene_data["dna_sequence"][row]
         cluster_dict = {gene_data["clustering_id"][row] : (gene_data["annotation_id"][row], sequence)}
         gene_data_json.update(cluster_dict)
-    all_names = G.graph["isolateNames"]
-    num_isolates = len(all_names)
     with open(biosampleJSON, "r") as bios:
         label_accession_str = bios.read()
     label_accession_pairs = json.loads(label_accession_str)
@@ -178,67 +273,98 @@ def generate_library(graph_dir,
         update_index_no = True
     # iterate through panaroo graph to extract gene information if node is not present in panarooPairs or has been updated
     sys.stderr.write('\nExtracting node information from Panaroo graph\n')
+    updatedPanarooNames = []
+    currentPanarooNames = []
+    updatedDescriptions = []
+    elasticIndices = []
+    panaroo_pairs = {}
     all_names_set = set()
     for node in tqdm(G._node):
         y = G._node[node]
         gene_names = y["name"]
         splitNames = gene_names.split("~~~")
-        # need to make sure we're not indexing annotations that have been predicted by prodigal and are not supported by existing annotations
-        if not all("PRED_" in name for name in splitNames):
-            if not update_index_no:
-                # this checks if any of the nodes gene names are in the panaroo pair values
-                # if so the index no will be the key
-                # if not the index no will be the current index no in index_values
-                for key, value in panaroo_pairs.items():
-                    if any(name in value["panarooNames"] for name in splitNames):
-                        index_no = int(key)
-                        all_names_set.add(value["consistentNames"])
-                    else:
-                        index_no = index_no
-            # skips indexing nodes that have identical panarooNames and have already been indexed
-            if not any(gene_names in panaroo_pairs[key]["panarooNames"] for key in panaroo_pairs.keys()):
-                # if not all names in previous panaroo pairs then add or update information in index
-                member_labels = []
-                annotation_ids = []
-                biosample_labels = []
-                for mem in range(len(y["members"])):
-                    isol_label = G.graph["isolateNames"][mem]
-                    member_labels.append(isol_label)
-                    biosample_labels.append(label_accession_pairs[isol_label])
-                    gene_data_row = gene_data_json[y["geneIDs"].split(";")[mem]]
-                    member_annotation_id = gene_data_row[0]
-                    annotation_ids.append(member_annotation_id)
-                isolate_indices = [isolateIndexJSON[label] for label in member_labels]
-                # supplement annotation with pfam search result. Tend to be more up to date
-                if not (y["description"] == "" or y["description"] == "hypothetical protein" or y["description"] == "Hypothetical protein"):
-                    panarooDescription = y["description"].split(";")
-                    pfamResult = None
+        if not update_index_no:
+            # this checks if any of the nodes gene names are in the panaroo pair values
+            # if so the index no will be the key
+            # if not the index no will be the current index no in index_values
+            for key, value in panaroo_pairs.items():
+                if any(name in value["panarooNames"] for name in splitNames):
+                    index_no = int(key)
+                    all_names_set.add(value["consistentNames"])
                 else:
-                    panarooDescription = ["Hypothetical protein"]
-                    pfamResult = searchPfam(y["protein"].split(";")[0])
-                annotation_dict = {"panarooNames" : gene_names,
-                                   "panarooDescriptions" : panarooDescription,
-                                   "gene_index": index_no,
-                                   "foundIn_labels": member_labels,
-                                   "foundIn_indices": isolate_indices,
-                                   "foundIn_biosamples": biosample_labels,
-                                   "member_annotation_ids": annotation_ids}
+                    index_no = index_no
+        if not all("PRED_" in name for name in splitNames):
+            member_labels = []
+            annotation_ids = []
+            biosample_labels = []
+            for mem in range(len(y["members"])):
+                isol_label = G.graph["isolateNames"][mem]
+                member_labels.append(isol_label)
+                biosample_labels.append(label_accession_pairs[isol_label])
+                gene_data_row = gene_data_json[y["geneIDs"].split(";")[mem]]
+                member_annotation_id = gene_data_row[0]
+                annotation_ids.append(member_annotation_id)
+            isolate_indices = [isolateIndexJSON[label] for label in member_labels]
+            # supplement annotation with pfam search result. Tend to be more up to date
+            if not (y["description"] == "" or y["description"] == "hypothetical protein" or y["description"] == "Hypothetical protein"):
+                panarooDescription = y["description"].split(";")
+                updatedDescriptions.append(";".join(panarooDescription))
+                pfamResult = None
+            else:
+                panarooDescription = "Hypothetical protein"
+                pfamResult = searchPfam(y["protein"].split(";")[0])
                 if pfamResult:
-                    annotation_dict.update(pfamResult)
+                    # these are new descriptions identified by searching pfam
+                    pfamDescriptions = pfamResult["pfam_descriptions"]
+                    if isinstance(pfamDescriptions, list):
+                        pfamDescriptions += panarooDescription
+                    else:
+                        pfamDescriptions = [pfamDescriptions]
+                        pfamDescriptions.append(panarooDescription)
+                    updatedDescriptions.append(";".join(pfamDescriptions))
+                else:
+                    updatedDescriptions.append(panarooDescription)
+            # this is the dictionary used to inform the geneDisplay page for the frontend
+            annotation_dict = {"panarooDescriptions" : panarooDescription,
+                               "gene_index": index_no,
+                               "foundIn_labels": member_labels,
+                               "foundIn_indices": isolate_indices,
+                               "foundIn_biosamples": biosample_labels,
+                               "member_annotation_ids": annotation_ids}
+            consistent_name = "COG_" + str(index_no)
+            if pfamResult:
+                annotation_dict.update(pfamResult)
+            if not (all("UNNAMED_" in name for name in splitNames or "PRED_" in name for name in splitNames) or "group_" in gene_names):
+                # sets the consistent name to one of the splitnames
+                newSplitNames = []
+                for name in splitNames:
+                    if not ("PRED_" in name or "UNNAMED_" in name or name in all_names_set):
+                        consistent_name = name
+                        newSplitNames.append(name)
+                # we have removed PRED_, UNNAMED_ and group_ from the name for subsequent panaroo runs
+                newGeneNames = "~~~".join(newSplitNames)
+            else:
                 # apply a consistent name if all annotations are named with an UNNAMED_ prefix
-                consistent_name = "COG_" + str(index_no)
-                if not (all("UNNAMED_" in name for name in splitNames or "PRED_" in name for name in splitNames) or "group_" in gene_names):
-                    # sets the consistent name to one of the splitnames
-                    for name in splitNames:
-                        if not ("PRED_" in name or "UNNAMED_" in name or name in all_names_set): # prevent duplicate names being returned from search
-                            consistent_name = name
-                all_names_set.add(consistent_name)
-                panaroo_pairs.update({index_no: {"panarooNames": gene_names, "consistentNames": consistent_name}})
-                annotation_dict.update({"consistentNames": consistent_name})
-                updated_genes.append(annotation_dict)
-                for annot_ID in annotation_ids:
-                    annotationID_key_updated_genes.update({annot_ID: annotation_dict})
-                index_no += 1
+                newGeneNames = consistent_name
+            panaroo_pairs.update({index_no: {"panarooNames": newGeneNames, "consistentNames": consistent_name}})
+            currentPanarooNames.append(gene_names)
+            # we are going to update the node names in the graph
+            updatedPanarooNames.append(newGeneNames)
+            # prevent duplicate names being returned from gene search results
+            all_names_set.add(consistent_name)
+            annotation_dict.update({"panarooNames": newGeneNames,"consistentNames": consistent_name})
+            # add annotation dict to a list that is then saved. This is as a backup if our indexed data is lost and can be directly indexed by index_gene_features.py.
+            updated_genes.append(annotation_dict)
+            for annot_ID in annotation_ids:
+                annotationID_key_updated_genes.update({annot_ID: annotation_dict})
+            index_no += 1
+    # update all of the panaroo outputs with information sourced above
+    update_panaroo_outputs(G,
+                           currentPanarooNames,
+                           updatedPanarooNames,
+                           updatedDescriptions,
+                           graph_dir,
+                           gene_data)
     # write name, index pairs in graph for COBS indexing in index_gene_features
     with open(os.path.join(output_dir, "panarooPairs.json"), "w") as o:
         o.write(json.dumps(panaroo_pairs))

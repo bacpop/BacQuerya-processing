@@ -1,5 +1,6 @@
 import glob
 from joblib import Parallel, delayed
+import json
 import networkx as nx
 import os
 import pandas as pd
@@ -61,6 +62,10 @@ def main():
     if not os.path.exists(raw_files):
         os.mkdir(raw_files)
     gene_data = pd.read_csv(os.path.join(args.graph_dir, "gene_data.csv"))
+    # import panarooPairs file as there is often an error due to filenames being too long
+    with open(os.path.join(os.path.dirname(args.graph_dir), "extracted_genes", "panarooPairs.json"), "r") as jsonFile:
+        pairString = jsonFile.read()
+    pairs = json.loads(pairString)
     # convert gene data file to dict to improve efficiency
     sys.stderr.write("\nConverting gene_data.csv to dict\n")
     gene_data_json = {}
@@ -78,13 +83,17 @@ def main():
             gene_names = y["name"]
             # unnamed genes are assigned non-consistent names with a group_ prefix
             if not "group_" in y["name"]:
+                for key, value in pairs.items():
+                    if gene_names == value["panarooNames"]:
+                        consistent_name = value["consistentNames"]
                 if not len(y["members"]) == 1:
                     multiFSAline = []
                     for mem in range(len(y["members"])):
                         isol_label = G.graph["isolateNames"][mem]
                         member_sequence = gene_data_json[y["geneIDs"].split(";")[mem]]
                         multiFSAline.append(">" + isol_label + "\n" + member_sequence)
-                    filename = os.path.join(raw_files, gene_names + ".fasta")
+                    # use consistentName as filename
+                    filename = os.path.join(raw_files, consistent_name + ".fasta")
                     unaligned_files.append(filename)
                     with open(filename, "w") as outFile:
                         outFile.write("\n".join(multiFSAline))
@@ -103,7 +112,7 @@ def main():
         for node in tqdm(G._node):
             y = G._node[node]
             gene_names = y["name"]
-            # unnamed genes are assigned inconsistent names with a group_ prefix
+            # unnamed genes are assigned inconsistent names with a group_ prefix.
             if "group_" in y["name"]:
                 if not len(y["members"]) == 1:
                     multiFSAline = []

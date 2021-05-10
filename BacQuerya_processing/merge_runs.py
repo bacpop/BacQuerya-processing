@@ -179,6 +179,10 @@ def main():
         # parallelise alignment merge
         current_alignment_files = glob.glob(os.path.join(args.alignment_dir, "*.aln.fas")) + glob.glob(os.path.join(args.alignment_dir, "*.fasta"))
         previous_alignment_files = glob.glob(os.path.join(args.prev_run, "aligned_gene_sequences", "*.aln.fas")) + glob.glob(os.path.join(args.prev_run, "aligned_gene_sequences","*.fasta"))
+        # import panarooPairs file as there is often an error due to filenames being too long
+        with open(os.path.join(geneMetadataDir, "panarooPairs.json"), "r") as jsonFile:
+            pairString = jsonFile.read()
+        pairs = json.loads(pairString)
         previous_alignment_files_cleaned = []
         for prev_align in previous_alignment_files:
             if not "group_" in prev_align:
