@@ -1,4 +1,6 @@
+import glob
 from joblib import Parallel, delayed
+import json
 import networkx as nx
 import os
 import pandas as pd
@@ -25,6 +27,11 @@ def get_options():
                         required=True,
                         help="output directory",
                         type=str)
+    io_opts.add_argument("--post-merge",
+                        dest="post_merge",
+                        help="alignement script is being run after panaroo_merge",
+                        action='store_true',
+                        default=False)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
                         required=False,
@@ -41,6 +48,10 @@ def mafft_align(input_file, output_dir):
     subprocess_command += os.path.join(output_dir, os.path.basename(input_file).replace(".fasta", ".aln.fas"))
     subprocess.run(subprocess_command, shell=True, check=True)
 
+def deleteFile(filename):
+    if os.path.isdir(filename):
+        shutil.rmtree(filename)
+
 def main():
     """Main function. Parses command line args and calls functions."""
     args = get_options()
@@ -51,6 +62,10 @@ def main():
     if not os.path.exists(raw_files):
         os.mkdir(raw_files)
     gene_data = pd.read_csv(os.path.join(args.graph_dir, "gene_data.csv"))
+    # import panarooPairs file as there is often an error due to filenames being too long
+    with open(os.path.join(os.path.dirname(args.graph_dir), "extracted_genes", "panarooPairs.json"), "r") as jsonFile:
+        pairString = jsonFile.read()
+    pairs = json.loads(pairString)
     # convert gene data file to dict to improve efficiency
     sys.stderr.write("\nConverting gene_data.csv to dict\n")
     gene_data_json = {}
@@ -62,25 +77,59 @@ def main():
     sys.stderr.write('\nWriting unaligned multi-fasta files from Panaroo output\n')
     G = nx.read_gml(os.path.join(args.graph_dir, "final_graph.gml"))
     unaligned_files = []
-    for node in tqdm(G._node):
-        y = G._node[node]
-        gene_names = y["name"]
-        if not len(y["members"]) == 1:
-            multiFSAline = []
-            for mem in range(len(y["members"])):
-                isol_label = G.graph["isolateNames"][mem]
-                member_sequence = gene_data_json[y["geneIDs"].split(";")[mem]]
-                multiFSAline.append(">" + isol_label + "\n" + member_sequence)
-            filename = os.path.join(raw_files, gene_names + ".fasta")
-            unaligned_files.append(filename)
-            with open(filename, "w") as outFile:
-                outFile.write("\n".join(multiFSAline))
-        else:
-            isol_label = G.graph["isolateNames"][y["members"][0]]
-            member_sequence = gene_data_json[y["geneIDs"]]
-            multiFSAline = ">" + isol_label + "\n" + member_sequence
-            with open(os.path.join(args.output_dir, gene_names + ".fasta"), "w") as outFile:
-                outFile.write(multiFSAline)
+    if not args.post_merge:
+        for node in tqdm(G._node):
+            y = G._node[node]
+            gene_names = y["name"]
+            # unnamed genes are assigned non-consistent names with a group_ prefix
+            if not "group_" in y["name"]:
+                for key, value in pairs.items():
+                    if gene_names == value["panarooNames"]:
+                        consistent_name = value["consistentNames"]
+                if not len(y["members"]) == 1:
+                    multiFSAline = []
+                    for mem in range(len(y["members"])):
+                        isol_label = G.graph["isolateNames"][mem]
+                        member_sequence = gene_data_json[y["geneIDs"].split(";")[mem]]
+                        multiFSAline.append(">" + isol_label + "\n" + member_sequence)
+                    # use consistentName as filename
+                    filename = os.path.join(raw_files, consistent_name + ".fasta")
+                    unaligned_files.append(filename)
+                    with open(filename, "w") as outFile:
+                        outFile.write("\n".join(multiFSAline))
+                else:
+                    isol_label = G.graph["isolateNames"][y["members"][0]]
+                    member_sequence = gene_data_json[y["geneIDs"].split(";")[0]] # just in case we are looking at a paralog
+                    multiFSAline = ">" + isol_label + "\n" + member_sequence
+                    with open(os.path.join(args.output_dir, gene_names + ".fasta"), "w") as outFile:
+                        outFile.write(multiFSAline)
+    else:
+        # delete group alignments if they are already present- the gene names are incorrect
+        group_files = glob.glob(os.path.join(args.output_dir, "group_*"))
+        for groupFile in group_files:
+            deleteFile(groupFile)
+        # iterate through group nodes
+        for node in tqdm(G._node):
+            y = G._node[node]
+            gene_names = y["name"]
+            # unnamed genes are assigned inconsistent names with a group_ prefix.
+            if "group_" in y["name"]:
+                if not len(y["members"]) == 1:
+                    multiFSAline = []
+                    for mem in range(len(y["members"])):
+                        isol_label = G.graph["isolateNames"][mem]
+                        member_sequence = gene_data_json[y["geneIDs"].split(";")[mem]]
+                        multiFSAline.append(">" + isol_label + "\n" + member_sequence)
+                    filename = os.path.join(raw_files, gene_names + ".fasta")
+                    unaligned_files.append(filename)
+                    with open(filename, "w") as outFile:
+                        outFile.write("\n".join(multiFSAline))
+                else:
+                    isol_label = G.graph["isolateNames"][y["members"][0]]
+                    member_sequence = gene_data_json[y["geneIDs"].split(";")[0]] # just in case we are looking at a paralog
+                    multiFSAline = ">" + isol_label + "\n" + member_sequence
+                    with open(os.path.join(args.output_dir, gene_names + ".fasta"), "w") as outFile:
+                        outFile.write(multiFSAline)
     # run mafft on the unaligned MSA files
     sys.stderr.write('\nAligning gene multi-fasta files\n')
     # parallelise mafft alignment

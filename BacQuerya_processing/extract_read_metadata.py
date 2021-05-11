@@ -55,6 +55,11 @@ def get_options():
                         required=True,
                         help="specify email for entrez access",
                         type=str)
+    io_opts.add_argument("--previous-run",
+                        dest="previous_dir",
+                        required=True,
+                        help="directory name of previous snakemake outputs",
+                        type=str)
     io_opts.add_argument("--threads",
                         dest="n_cpu",
                         required=False,
@@ -102,50 +107,64 @@ def download_SRA_metadata(cleaned_accession,
 
 def download_ENA_metadata(accession_dict,
                           output_dir):
-    cleaned_accession = accession_dict["read_accession"]
+    cleaned_accession = accession_dict["input_accession"]
     index_no = accession_dict["isolate_index"]
     apiURL = "https://www.ebi.ac.uk/ena/browser/api/xml/" + cleaned_accession
     urlResponse = requests.get(apiURL)
-    accession_metadata = dict(xmltodict.parse(urlResponse.text))["SAMPLE_SET"]
-    try:
+    accession_metadata = dict(xmltodict.parse(urlResponse.text))
+    #try:
+    if "RUN_SET" in accession_metadata.keys():
+        # we're looking at the run accession,, need to extract the read accession
+        temp_metadata = accession_metadata["RUN_SET"]["RUN"]
+        run_accession = cleaned_accession
+        for elem in temp_metadata["RUN_LINKS"]["RUN_LINK"]:
+            if elem["XREF_LINK"]["DB"] == "ENA-SAMPLE":
+                read_accession = elem["XREF_LINK"]["ID"]
+        apiURL = "https://www.ebi.ac.uk/ena/browser/api/xml/" + read_accession
+        urlResponse = requests.get(apiURL)
+        accession_metadata = dict(xmltodict.parse(urlResponse.text))
+    elif "SAMPLE_SET" in accession_metadata.keys():
+        cleaned_accession = cleaned_accession
         run_accession = ""
-        for link in accession_metadata["SAMPLE"]["SAMPLE_LINKS"]["SAMPLE_LINK"]:
-            if link["XREF_LINK"]["DB"] == "ENA-RUN":
-                run_accession = link["XREF_LINK"]["ID"]
-            if link["XREF_LINK"]["DB"] == "ENA-FASTQ-FILES":
-                fastqTable = requests.get(link["XREF_LINK"]["ID"]).text.split("\t")
-                fastqLinks = fastqTable[4].split(";")
-                for fql in range(len(fastqLinks)):
-                    fastqLinks[fql] = "https://" + fastqLinks[fql]
-                accession_metadata.update({"ENA-FASTQ-FILES" : fastqLinks})
-        for attribute in accession_metadata["SAMPLE"]["SAMPLE_ATTRIBUTES"]["SAMPLE_ATTRIBUTE"]:
-            if attribute["TAG"] == "ENA-FIRST-PUBLIC":
-                submission_date = attribute["VALUE"]
-        try:
-            submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["@namespace"]
-        except:
-            submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["namespace"]
-        metadata = {"isolateName" : cleaned_accession,
-                    "accession" : cleaned_accession,
-                    "read_accession" : cleaned_accession,
-                    "isolate_index" : index_no,
-                    "Submitter" : submitter,
-                    "Genome_representation" : "reads",
-                    "Date" : submission_date,
-                    "Organism_name" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["SCIENTIFIC_NAME"],
-                    "Taxid" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["TAXON_ID"],
-                    "BioSample" : accession_metadata["SAMPLE"]["IDENTIFIERS"]["EXTERNAL_ID"]["#text"],
-                    "source" : "ENA",
-                    "sequenceURL" : accession_metadata["ENA-FASTQ-FILES"],
-                    "allAttributes" : json.dumps(accession_metadata["SAMPLE"])}
-        # output isolate: index pairs
-        indexIsolatePair = {cleaned_accession: index_no}
-        if not run_accession == "":
-            metadata.update({"run_accession" : run_accession})
-        metadata_json = json.dumps(metadata).replace("@", "")
+    accession_metadata = accession_metadata["SAMPLE_SET"]
+    for link in accession_metadata["SAMPLE"]["SAMPLE_LINKS"]["SAMPLE_LINK"]:
+        if link["XREF_LINK"]["DB"] == "ENA-RUN":
+            run_accession = link["XREF_LINK"]["ID"]
+        if link["XREF_LINK"]["DB"] == "ENA-FASTQ-FILES":
+            fastqTable = requests.get(link["XREF_LINK"]["ID"]).text.split("\t")
+            fastqLinks = fastqTable[4].split(";")
+            for fql in range(len(fastqLinks)):
+                fastqLinks[fql] = "https://" + fastqLinks[fql]
+            accession_metadata.update({"ENA-FASTQ-FILES" : fastqLinks})
+    for attribute in accession_metadata["SAMPLE"]["SAMPLE_ATTRIBUTES"]["SAMPLE_ATTRIBUTE"]:
+        if attribute["TAG"] == "ENA-FIRST-PUBLIC":
+            submission_date = attribute["VALUE"]
+    try:
+        submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["@namespace"]
     except:
-       sys.stderr.write("Request failed for the following accession: " + cleaned_accession)
+        submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["namespace"]
+    metadata = {"isolateName" : cleaned_accession,
+                "accession" : cleaned_accession,
+                "read_accession" : cleaned_accession,
+                "run_accession" : run_accession,
+                "isolate_index" : index_no,
+                "Submitter" : submitter,
+                "Genome_representation" : "reads",
+                "Date" : submission_date,
+                "Organism_name" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["SCIENTIFIC_NAME"],
+                "Taxid" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["TAXON_ID"],
+                "BioSample" : accession_metadata["SAMPLE"]["IDENTIFIERS"]["EXTERNAL_ID"]["#text"],
+                "source" : "ENA",
+                "sequenceURL" : accession_metadata["ENA-FASTQ-FILES"],
+                "allAttributes" : json.dumps(accession_metadata["SAMPLE"])}
+    # output isolate: index pairs
+    indexIsolatePair = {cleaned_accession: index_no}
+    if not run_accession == "":
+        metadata.update({"run_accession" : run_accession})
+    metadata_json = json.dumps(metadata).replace("@", "")
     return [fastqLinks, metadata, indexIsolatePair]
+    #except:
+       #sys.stderr.write("Request failed for the following accession: " + cleaned_accession)
 
 def main():
     """Main function. Parses command line args and calls functions."""
@@ -161,16 +180,26 @@ def main():
     with open(args.index_file, "r") as indexFile:
         indexNoDict = json.loads(indexFile.read())
     index_no = int(indexNoDict["isolateIndexNo"])
+    # if previous isolate_kv pairs exist use that to prevent duplication of isolates in index
+    previousRunFile = os.path.join(args.previous_dir, args.output_dir, "indexIsolatePairs.json")
+    if os.path.exists(previousRunFile):
+        with open(previousRunFile) as prevKeys:
+            indexIsolateDict = json.loads(prevKeys.read())
+    else:
+        indexIsolateDict = {}
     for access in range(len(sample_list)):
         if not sample_list[access] == "":
+            if sample_list[access] in indexIsolateDict.keys():
+                index_no = indexIsolateDict[sample_list[access]]
+            else:
+                index_no = index_no
             assigned_index = {"isolate_index": index_no,
-                              "read_accession": sample_list[access]}
+                              "input_accession": sample_list[access]}
             index_no += 1
             indexed_accessions.append(assigned_index)
     job_list = [
         indexed_accessions[i:i + args.n_cpu] for i in range(0, len(indexed_accessions), args.n_cpu)
     ]
-    indexIsolateDict = {}
     if args.read_source == "ena":
         access_data = []
         for job in tqdm(job_list):

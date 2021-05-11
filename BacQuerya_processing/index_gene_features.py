@@ -73,7 +73,7 @@ def get_options():
                         type=str)
     io_opts.add_argument("--elastic-index",
                         dest="elastic",
-                        help="don't write gene json and index directly in script",
+                        help="index gene json in elastic index",
                         action='store_true',
                         default=False)
     io_opts.add_argument("--threads",
@@ -151,28 +151,33 @@ def main():
     temp_dir = os.path.join(tempfile.mkdtemp(dir=args.output_dir), "")
     if args.type == "gene":
         if args.elastic:
-            with open(os.path.join(args.input_dir, "allIsolates.json"), "r") as inFeatures:
+            with open(os.path.join(args.input_dir, "annotatedNodes.json"), "r") as inFeatures:
                 geneString = inFeatures.read()
             isolateGeneDicts = json.loads(geneString)["information"]
             sys.stderr.write('\nBuilding elasticsearch index\n')
             elasticsearch_isolates(isolateGeneDicts,
-                                args.index_name)
+                                   args.index_name)
         # load panaroo graph and write sequence files from COG representatives
         sys.stderr.write('\nLoading panaroo graph\n')
         G = nx.read_gml(os.path.join(args.graph_dir, "final_graph.gml"))
         with open(os.path.join(os.path.dirname(args.graph_dir), "extracted_genes", "panarooPairs.json"), "r") as jsonFile:
             pairString = jsonFile.read()
         pairs = json.loads(pairString)
-        panarooPairsUpdated = []
         representative_sequences = []
         sys.stderr.write('\nWriting gene-specific files for COBS indexing\n')
+        # need to apply same constraints as those in extract_genes.py
         for node in tqdm(G._node):
             y = G._node[node]
             gene_name = y["name"]
-            dna = y["dna"].split(";")
-            gene_index = pairs[y["name"]]
-            for seq in range(len(dna)):
-                representative_sequences.append({"gene_index": str(gene_index) + "_v" + str(seq), "sequence": dna[seq]})
+            splitNames = gene_name.split("~~~")
+            # need to make sure we're not indexing annotations that have been predicted by prodigal and are not supported by existing annotations
+            if not all("PRED_" in name for name in splitNames):
+                dna = y["dna"].split(";")
+                for key in pairs.keys():
+                    if pairs[key]["panarooNames"] == y["name"]:
+                        gene_index = key
+                for seq in range(len(dna)):
+                    representative_sequences.append({"gene_index": str(gene_index) + "_v" + str(seq), "sequence": dna[seq]})
         job_list = [
             representative_sequences[i:i + args.n_cpu] for i in range(0, len(representative_sequences), args.n_cpu)
         ]

@@ -1,6 +1,8 @@
 import glob
+from joblib import Parallel, delayed
 import os
 import subprocess
+from tqdm import tqdm
 
 configfile: 'config.yml'
 
@@ -86,21 +88,30 @@ rule retrieve_ena_read_metadata:
         email=config['extract_entrez_information']['email'],
         threads=config['n_cpu']
     shell:
-       'python extract_read_metadata-runner.py -s {input} -r ena -i {params.index} -e {params.email} --threads {params.threads} -o {output.output_dir}'
+       'python extract_read_metadata-runner.py -s {input} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir}'
 
 # retrieve raw reads from ENA
 rule retrieve_ena_reads:
     input:
         rules.retrieve_ena_read_metadata.output.run_accessions
+    params:
+        threads=config['n_cpu']
     output:
         directory("retrieved_ena_reads")
     run:
+        def download_read(accession, output_dir):
+            shell_command = "wget --no-check-certificate --directory-prefix " + output_dir + " " + accession
+            subprocess.run(shell_command, check=True, shell=True)
+
         with open(input[0], "r") as f:
             run_accessions = f.read().splitlines()
-        for access in run_accessions:
-            shell_command = "wget --directory-prefix " + output[0] + " " + access
-            shell(shell_command)
-    #'ascp -QT -l 300m -P33001 -i ~/.aspera/connect/etc/asperaweb_id_dsa.openssh era-fasp@fasp.sra.ebi.ac.uk:vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz {output}' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_1.fastq.gz
+        job_list = [
+            run_accessions[i:i + params.threads] for i in range(0, len(run_accessions), params.threads)
+        ]
+        for job in tqdm(job_list):
+            Parallel(n_jobs=params.threads)(delayed(download_read)(access,
+                                                                   output[0]) for access in job)
+        #'ascp -QT -l 300m -P33001 -i ~/.aspera/connect/etc/asperaweb_id_dsa.openssh era-fasp@fasp.sra.ebi.ac.uk:vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz {output}' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_1.fastq.gz
 
 # gunzip genome files
 rule unzip_genomes:
@@ -191,28 +202,38 @@ rule run_prodigal:
     input:
         genome_dir=rules.unzip_genomes.output,
         annotation_dir=rules.unzip_annotations.output
+    params:
+        threads=config['n_cpu']
     output:
         directory("prodigal_predicted_annotations")
     run:
-        assemblies = glob.glob(os.path.join(input.genome_dir, "*.fna"))
-        existing_annotations = glob.glob(os.path.join(input.annotation_dir, "*.gff"))
-        existing_annotations = [os.path.basename(filename).split(".gff")[0] for filename in existing_annotations]
-        for assembly in assemblies:
-            if not os.path.basename(assembly).split(".fna")[0] in existing_annotations:
-                output_file = os.path.join(output[0], os.path.splitext(os.path.basename(assembly))[0])
-                shell("mkdir -p {output} && prodigal -f gff -i " + assembly + " -o " + output_file + ".gff")
+        def multithread_prodigal(assembly, output_dir):
+            output_file = os.path.join(output_dir, os.path.splitext(os.path.basename(assembly))[0] + ".gff")
+            shell_command = "mkdir -p " + output_dir + " && prodigal -f gff -q -i " + assembly + " -o " + output_file
+            subprocess.run(shell_command, shell=True, check=True)
+
+        assemblies = glob.glob(os.path.join(input.genome_dir[0], "*.fna"))
+        existing_annotations = glob.glob(os.path.join(input.annotation_dir[0], "*.gff"))
+        job_list = [
+            assemblies[i:i + params.threads] for i in range(0, len(assemblies), params.threads)
+        ]
+        for job in tqdm(job_list):
+            Parallel(n_jobs=params.threads)(delayed(multithread_prodigal)(assem,
+                                                                          output[0]) for assem in job)
 
 # reformat annotation files for panaroo input
 rule reformat_annotations:
     input:
         genome_dir=rules.unzip_genomes.output,
-        annotation_dir=rules.unzip_annotations.output
+        annotation_dir=rules.unzip_annotations.output,
+        prodigal_dir=rules.run_prodigal.output,
+        indexFile=config['extract_assembly_stats']['index_file']
     params:
         threads=config['n_cpu']
     output:
         directory("panaroo_cleaned_annotations")
     shell:
-        "python panaroo_clean_inputs-runner.py -a {input.annotation_dir} -g {input.genome_dir} -o {output} --threads {params.threads}"
+        "python panaroo_clean_inputs-runner.py -a {input.annotation_dir} -g {input.genome_dir} -p {input.prodigal_dir} --index-file {input.indexFile} -o {output} --threads {params.threads}"
 
 # run panaroo on reformatted annotations
 rule run_panaroo:
@@ -225,17 +246,6 @@ rule run_panaroo:
     shell:
         "panaroo -i {input}/*.gff -o {output} --clean-mode sensitive -t {params.threads}"
 
-# generate mafft alignments for panaroo output
-rule mafft_align:
-    input:
-        rules.run_panaroo.output
-    params:
-        threads=config['n_cpu']
-    output:
-        directory("aligned_gene_sequences")
-    shell:
-        "python generate_alignments-runner.py --graph-dir {input} --output-dir {output} --threads {params.threads}"
-
 # merge current panaroo output with previous panaroo outputs
 rule merge_panaroo:
     input:
@@ -243,7 +253,7 @@ rule merge_panaroo:
     params:
         threads=config['n_cpu']
     output:
-        touch("panaroo_merge.done")
+        touch("merge_panaroo.done")
     run:
         if os.path.exists("previous_run"):
             shell("panaroo-merge -d {input.current_output} previous_run/panaroo_output -o previous_run/panaroo_output -t {params.threads}")
@@ -263,7 +273,7 @@ rule extract_assembly_stats:
         threads=config['n_cpu'],
         email=config['extract_entrez_information']['email']
     shell:
-       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output}/isolateAssemblyAttributes.json -k {output}/indexIsolatePairs.json -b {output}/biosampleIsolatePairs.json -e {params.email} --threads {params.threads}'
+       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output}/isolateAssemblyAttributes.json -k {output}/indexIsolatePairs.json -b {output}/biosampleIsolatePairs.json -e {params.email} --previous-run previous_run --threads {params.threads}'
 
 # build gene JSONS from GFF and sequence files
 rule extract_genes:
@@ -271,7 +281,6 @@ rule extract_genes:
         annotations=rules.unzip_annotations.output,
         genomes=rules.unzip_genomes.output,
         assemblyStatDir=rules.extract_assembly_stats.output,
-        #graphDir=rules.run_panaroo.output,
         merged_panaroo=rules.merge_panaroo.output
     output:
         directory("extracted_genes")
@@ -281,6 +290,18 @@ rule extract_genes:
         index_name=config['index_sequences']['elasticSearchIndex']
     shell:
        'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g previous_run/panaroo_output -j {input.assemblyStatDir}/isolateAssemblyAttributes.json -k {input.assemblyStatDir}/indexIsolatePairs.json -i {params.index} -o {output} --threads {params.threads} --elastic-index --index-name {params.index_name} --biosampleJSON {input.assemblyStatDir}/biosampleIsolatePairs.json'
+
+# generate mafft alignments for panaroo output
+rule mafft_align:
+    input:
+        graph_dir=rules.run_panaroo.output,
+        extracted_genes=rules.extract_genes.output
+    params:
+        threads=config['n_cpu']
+    output:
+        directory("aligned_gene_sequences")
+    shell:
+        "python generate_alignments-runner.py --graph-dir {input.graph_dir} --output-dir {output} --threads {params.threads}"
 
 # append isolate attributes to elasticsearch index
 rule index_isolate_attributes:
@@ -294,36 +315,6 @@ rule index_isolate_attributes:
         touch("index_isolates.done")
     shell:
        'python index_isolate_attributes-runner.py -f {input.assemblyStatDir}/isolateAssemblyAttributes.json -e {input.ena_metadata} -i {params.index} -g {input.feature_file}'
-
-# build COBS index of gene sequences from the output of extract_genes
-rule index_gene_sequences:
-    input:
-        input_dir=rules.extract_genes.output,
-        #graph_dir=rules.run_panaroo.output,
-        merged_panaroo=rules.merge_panaroo.output,
-        fake_input=rules.index_isolate_attributes.output
-    output:
-        directory("index_genes")
-    params:
-        k_mer=config['index_sequences']['kmer_length'],
-        threads=config['n_cpu'],
-        index_type=config['index_sequences']['gene_type'],
-        elasticIndex=config['index_sequences']['elasticSearchIndex'],
-    shell:
-       'python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads} --elastic-index --index {params.elasticIndex}'
-
-# build COBS index of gene sequences from the output of extract_genes
-rule index_assembly_sequences:
-    input:
-        rules.unzip_genomes.output
-    output:
-        directory("index_assemblies")
-    params:
-        k_mer=config['index_sequences']['kmer_length'],
-        threads=config['n_cpu'],
-        index_type=config['index_sequences']['assembly_type']
-    shell:
-       'python index_gene_features-runner.py -t {params.index_type} -a {input} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
 
 # merge the current run with information from previous runs
 rule merge_runs:
@@ -339,6 +330,36 @@ rule merge_runs:
     shell:
         'python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --accessionFile {input.currentRunAccessions} --previous-run previous_run --threads {params.threads}'
 
+# build COBS index of gene sequences from the output of extract_genes
+rule index_gene_sequences:
+    input:
+        input_dir=rules.extract_genes.output,
+        merged_runs=rules.merge_runs.output,
+        merged_panaroo=rules.merge_panaroo.output,
+        fake_input=rules.index_isolate_attributes.output
+    output:
+        directory("index_genes")
+    params:
+        k_mer=config['index_sequences']['kmer_length'],
+        threads=config['n_cpu'],
+        index_type=config['index_sequences']['gene_type'],
+        elasticIndex=config['index_sequences']['elasticSearchIndex'],
+    shell:
+       'python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
+
+# build COBS index of gene sequences from the output of extract_genes
+rule index_assembly_sequences:
+    input:
+        rules.unzip_genomes.output
+    output:
+        directory("index_assemblies")
+    params:
+        k_mer=config['index_sequences']['kmer_length'],
+        threads=config['n_cpu'],
+        index_type=config['index_sequences']['assembly_type']
+    shell:
+       'python index_gene_features-runner.py -t {params.index_type} -a {input} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
+
 # run entire pipeline and delete current run output directories when done
 rule run_pipeline:
     input:
@@ -353,6 +374,9 @@ rule run_pipeline:
         retrieved_genomes=rules.retrieve_genomes.output,
         retrieved_assembly_stats=rules.retrieve_assembly_stats.output,
         merged_panaroo=rules.merge_panaroo.output,
-        aligned_genes=rules.mafft_align.output
+        aligned_genes=rules.mafft_align.output,
+        prodigal_output=rules.run_prodigal.output,
+        indexed_gene_sequences=rules.index_gene_sequences.output,
+        indexed_isolates=rules.index_isolate_attributes.output
     shell:
-        'rm -rf {input.retrieved_genomes} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'
+        'rm -rf {input.retrieved_genomes} {input.indexed_isolates} {input.prodigal_output} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'
