@@ -294,7 +294,7 @@ rule extract_genes:
 # generate mafft alignments for panaroo output
 rule mafft_align:
     input:
-        graph_dir=rules.run_panaroo.output,
+        graph_dir=rules.merge_panaroo.output,
         extracted_genes=rules.extract_genes.output
     params:
         threads=config['n_cpu']
