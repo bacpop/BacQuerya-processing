@@ -180,6 +180,7 @@ def update_panaroo_outputs(G,
         gene_data["gene_name"][annotation_row_index] = cluster_name_dict[k]["name"]
         gene_data["description"][annotation_row_index] = cluster_name_dict[k]["description"]
     gene_data.to_csv(os.path.join(graph_dir, "gene_data.csv"), index=False)
+    del gene_data
     # update gene_presence_absence.csv and gene_presence_absence.rtab
     sys.stderr.write('\nUpdating gene_presence_absence files\n')
     gene_presence_absence = pd.read_csv(os.path.join(graph_dir, "gene_presence_absence.csv"))
@@ -344,13 +345,17 @@ def generate_library(graph_dir,
             consistent_name = "COG_" + str(index_no)
             if pfamResult:
                 annotation_dict.update(pfamResult)
-            if not (all("UNNAMED_" in name for name in splitNames or "PRED_" in name for name in splitNames) or "group_" in gene_names):
+            reject_list = ["UNNAMED_", "group_", "PRED_"]
+            if not (all(any(x in name for x in reject_list) for name in splitNames)):
                 # sets the consistent name to one of the splitnames
                 newSplitNames = []
                 for name in splitNames:
                     if not ("PRED_" in name or "UNNAMED_" in name or name in all_names_set):
                         consistent_name = name
                         newSplitNames.append(name)
+                        all_names_set.add(name)
+                if newSplitNames == []:
+                    newSplitNames = [consistent_name]
                 # we have removed PRED_, UNNAMED_ and group_ from the name for subsequent panaroo runs
                 newGeneNames = "~~~".join(newSplitNames)
             else:
