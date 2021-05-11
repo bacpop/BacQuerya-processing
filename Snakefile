@@ -256,7 +256,7 @@ rule merge_panaroo:
         touch("merge_panaroo.done")
     run:
         if os.path.exists("previous_run"):
-            shell("panaroo-merge -d {input.current_output} previous_run/panaroo_output -o previous_run/panaroo_output -t {params.threads}")
+            shell("panaroo-merge -d {input.current_output} previous_run/panaroo_output -o {input.current_output} -t {params.threads}")
         else:
             os.mkdir("previous_run")
             shell("cp -r {input.current_output} previous_run")
@@ -281,6 +281,7 @@ rule extract_genes:
         annotations=rules.unzip_annotations.output,
         genomes=rules.unzip_genomes.output,
         assemblyStatDir=rules.extract_assembly_stats.output,
+        graphDir=rules.run_panaroo.output,
         merged_panaroo=rules.merge_panaroo.output
     output:
         directory("extracted_genes")
@@ -289,19 +290,20 @@ rule extract_genes:
         threads=config['n_cpu'],
         index_name=config['index_sequences']['elasticSearchIndex']
     shell:
-       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g previous_run/panaroo_output -j {input.assemblyStatDir}/isolateAssemblyAttributes.json -k {input.assemblyStatDir}/indexIsolatePairs.json -i {params.index} -o {output} --threads {params.threads} --elastic-index --index-name {params.index_name} --biosampleJSON {input.assemblyStatDir}/biosampleIsolatePairs.json'
+       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.assemblyStatDir}/isolateAssemblyAttributes.json -k {input.assemblyStatDir}/indexIsolatePairs.json -i {params.index} -o {output} --threads {params.threads} --elastic-index --index-name {params.index_name} --biosampleJSON {input.assemblyStatDir}/biosampleIsolatePairs.json'
 
 # generate mafft alignments for panaroo output
 rule mafft_align:
     input:
-        graph_dir=rules.merge_panaroo.output,
-        extracted_genes=rules.extract_genes.output
+        merged_output=rules.merge_panaroo.output,
+        extracted_genes=rules.extract_genes.output,
+        graphDir=rules.run_panaroo.output
     params:
         threads=config['n_cpu']
     output:
         directory("aligned_gene_sequences")
     shell:
-        "python generate_alignments-runner.py --graph-dir {input.graph_dir} --output-dir {output} --threads {params.threads}"
+        "python generate_alignments-runner.py --graph-dir {input.graphDir} --extracted-genes {input.extracted_genes} --output-dir {output} --threads {params.threads}"
 
 # append isolate attributes to elasticsearch index
 rule index_isolate_attributes:
@@ -322,13 +324,14 @@ rule merge_runs:
         ncbiAssemblyStatDir=rules.extract_assembly_stats.output,
         extractedGeneMetadata=rules.extract_genes.output,
         currentRunAccessions=config['extract_entrez_information']['accession_file'],
-        aligned_genes=rules.mafft_align.output
+        aligned_genes=rules.mafft_align.output,
+        graphDir=rules.run_panaroo.output
     params:
         threads=config['n_cpu']
     output:
         touch("merge_runs.done")
     shell:
-        'python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --accessionFile {input.currentRunAccessions} --previous-run previous_run --threads {params.threads}'
+        'python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --graph-dir {input.graphDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --accessionFile {input.currentRunAccessions} --previous-run previous_run --threads {params.threads}'
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_gene_sequences:
@@ -336,7 +339,8 @@ rule index_gene_sequences:
         input_dir=rules.extract_genes.output,
         merged_runs=rules.merge_runs.output,
         merged_panaroo=rules.merge_panaroo.output,
-        fake_input=rules.index_isolate_attributes.output
+        fake_input=rules.index_isolate_attributes.output,
+        graphDir=rules.run_panaroo.output
     output:
         directory("index_genes")
     params:
@@ -345,7 +349,7 @@ rule index_gene_sequences:
         index_type=config['index_sequences']['gene_type'],
         elasticIndex=config['index_sequences']['elasticSearchIndex'],
     shell:
-       'python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
+       'python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g {input.graphDir} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_assembly_sequences:

@@ -29,6 +29,11 @@ def get_options():
                         required=True,
                         help="directory of alignments output by generate_alignments for current run",
                         type=str)
+    io_opts.add_argument("--graph-dir",
+                        dest="graph_dir",
+                        required=True,
+                        help="directory of merged panaroo runs",
+                        type=str)
     io_opts.add_argument("--accessionFile",
                         dest="accessionFile",
                         required=True,
@@ -152,9 +157,12 @@ def main():
         subprocess_command += args.geneMetadataDir + " "
         subprocess_command += args.accessionFile + " "
         subprocess_command += args.alignment_dir + " "
+        subprocess_command += args.graph_dir + " "
         subprocess_command += args.prev_run
         subprocess.run(subprocess_command, shell=True, check=True)
     else:
+        sys.stderr.write("\nOverwriting Panaroo output in " + args.prev_run + " with current merged output\n")
+        subprocess.run("cp -rf " + args.graph_dir + " " + args.prev_run, shell=True, check=True)
         # merge metadata for isolates found in NCBI for current and previous runs
         sys.stderr.write("\nMerging current and previous NCBI isolate metadata\n")
         currentIolateMetadata = os.path.join(args.ncbi_metadata, "isolateAssemblyAttributes.json")
@@ -171,6 +179,9 @@ def main():
         sys.stderr.write("\nDone\n")
         # merge gene metadata for current and previous runs
         sys.stderr.write("\nMerging current and previous gene metadata\n")
+        # copy panarooPairs into previous run dir
+        panarooPairs = os.path.join(args.geneMetadataDir, "panarooPairs.json")
+        subprocess.run("cp " + panarooPairs + " " + os.path.join(args.prev_run, panarooPairs),shell=True, check=True)
         mergeGeneMetadata(args.geneMetadataDir,
                           args.prev_run)
         sys.stderr.write("\nDone\n")
