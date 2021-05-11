@@ -271,6 +271,7 @@ def generate_library(graph_dir,
     with open(biosampleJSON, "r") as bios:
         label_accession_str = bios.read()
     label_accession_pairs = json.loads(label_accession_str)
+    num_isolates = len(G.graph["isolateNames"])
     annotationID_key_updated_genes = {}
     # need to update panarooPairs.json if it already exists, if not then create it.
     previousRunPanarooPairs = os.path.join(os.path.dirname(graph_dir), os.path.basename(output_dir), "panarooPairs.json")
@@ -294,6 +295,7 @@ def generate_library(graph_dir,
         y = G._node[node]
         gene_names = y["name"]
         splitNames = gene_names.split("~~~")
+        frequency = round((len(y["members"])/num_isolates)*100, 1)
         if not update_index_no:
             # this checks if any of the nodes gene names are in the panaroo pair values
             # if so the index no will be the key
@@ -322,27 +324,28 @@ def generate_library(graph_dir,
                 updatedDescriptions.append(";".join(panarooDescription))
                 pfamResult = None
             else:
-                panarooDescription = "Hypothetical protein"
+                panarooDescription = ["Hypothetical protein"]
                 pfamResult = searchPfam(y["protein"].split(";")[0])
                 if pfamResult:
                     # these are new descriptions identified by searching pfam
                     pfamDescriptions = pfamResult["pfam_descriptions"]
-                    if isinstance(pfamDescriptions, list):
-                        pfamDescriptions += panarooDescription
-                    else:
+                    if isinstance(pfamDescriptions, str):
                         pfamDescriptions = [pfamDescriptions]
-                        pfamDescriptions.append(panarooDescription)
-                    updatedDescriptions.append(";".join(pfamDescriptions))
+                    updatedDescriptions.append(";".join(panarooDescription + pfamDescriptions))
                 else:
-                    updatedDescriptions.append(panarooDescription)
+                    updatedDescriptions += panarooDescription
             # this is the dictionary used to inform the geneDisplay page for the frontend
             annotation_dict = {"panarooDescriptions" : panarooDescription,
+                               "panarooFrequency": frequency,
                                "gene_index": index_no,
                                "foundIn_labels": member_labels,
                                "foundIn_indices": isolate_indices,
                                "foundIn_biosamples": biosample_labels,
                                "member_annotation_ids": annotation_ids}
-            consistent_name = "COG_" + str(index_no)
+            if not update_index_no:
+                consistent_name = panaroo_pairs[index_no]["consistentNames"]
+            else:
+                consistent_name = "COG_" + str(index_no)
             if pfamResult:
                 annotation_dict.update(pfamResult)
             reject_list = ["UNNAMED_", "group_", "PRED_"]
@@ -350,7 +353,7 @@ def generate_library(graph_dir,
                 # sets the consistent name to one of the splitnames
                 newSplitNames = []
                 for name in splitNames:
-                    if not ("PRED_" in name or "UNNAMED_" in name or name in all_names_set):
+                    if not ("PRED_" in name or "UNNAMED_" in name or name in all_names_set) and update_index_no:
                         consistent_name = name
                         newSplitNames.append(name)
                         all_names_set.add(name)
