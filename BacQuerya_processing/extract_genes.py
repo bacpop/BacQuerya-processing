@@ -171,9 +171,10 @@ def update_panaroo_outputs(G,
             y["name"] = node_gene_name
             y["description"] = node_annotation
     # overwrite the previous graph
-    sys.stderr.write('\nUpdating all gene_data.csv file\n')
     nx.write_gml(G, os.path.join(graph_dir, "final_graph.gml"))
+    del G
     # update gene_data.csv
+    sys.stderr.write('\nUpdating all gene_data.csv file\n')
     for k, v in tqdm(cluster_name_dict.items()):
         annotation_row_index = list(gene_data["clustering_id"]).index(k)
         gene_data["gene_name"][annotation_row_index] = cluster_name_dict[k]["name"]
@@ -181,14 +182,8 @@ def update_panaroo_outputs(G,
     gene_data.to_csv(os.path.join(graph_dir, "gene_data.csv"), index=False)
     # update gene_presence_absence.csv and gene_presence_absence.rtab
     sys.stderr.write('\nUpdating gene_presence_absence files\n')
-    with open(os.path.join(graph_dir, "gene_presence_absence.Rtab"), "r") as inRtab:
-        rtab_pres_abs = inRtab.read().splitlines()
     gene_presence_absence = pd.read_csv(os.path.join(graph_dir, "gene_presence_absence.csv"))
     roary_presence_absence = pd.read_csv(os.path.join(graph_dir, "gene_presence_absence_roary.csv"))
-    with open(os.path.join(graph_dir, "pan_genome_reference.fa"), "r") as refFile:
-        pan_genome_reference = refFile.read().split(">")
-    with open(os.path.join(graph_dir, "struct_presence_absence.Rtab"), "r") as inStruct:
-        struct_pres_abs = inStruct.read().splitlines()
     updated_cog_dict = {}
     for name in tqdm(range(len(panarooNames))):
         # update csv file
@@ -203,42 +198,57 @@ def update_panaroo_outputs(G,
         roary_presence_absence["Non-unique Gene name"][roary_row_index] = non_unique
         roary_presence_absence["Annotation"][roary_row_index] = updatedDescriptions[name]
         updated_cog_dict.update({panarooNames[name]: updatedPanarooNames[name]})
+        if updatedPanarooNames[name] == "":
+            print(panarooNames[name])
     sys.stderr.write("\nWriting csv files\n")
     gene_presence_absence.to_csv(os.path.join(graph_dir, "gene_presence_absence.csv"), index=False)
     roary_presence_absence.to_csv(os.path.join(graph_dir, "gene_presence_absence_roary.csv"), index=False)
-    sys.stderr.write('\nUpdating pan_genome_reference.fa and struct_presence_absence.Rtab\n')
-    cleaned_rtab_pres_abs = []
-    cleaned_struct_pres_abs = []
-    cleaned_pan_genome_reference = []
+    del gene_presence_absence
+    del roary_presence_absence
+    sys.stderr.write('\nUpdating gene_presence_absence.Rtab\n')
+    with open(os.path.join(graph_dir, "gene_presence_absence.Rtab"), "r") as inRtab:
+        rtab_pres_abs = inRtab.read().splitlines()
     for key, value in tqdm(updated_cog_dict.items()):
         # update RTAB file
-        for line in rtab_pres_abs:
-            cog_names = line.split("\t")[0]
-            if key in cog_names:
-                line.replace(cog_names,value)
-            cleaned_rtab_pres_abs.append(line)
-        # update pan_genome_reference.fa
-        for line in pan_genome_reference:
-            cog_names = line.split("\n")[0]
-            if key in cog_names:
-                line.replace(cog_names, value)
-            cleaned_pan_genome_reference.append(line)
-        # update struct_presence_absence.rtab
-        for line in struct_pres_abs:
-            cog_names = line.split("\n")[0]
-            if key in cog_names:
-                line.replace(cog_names, value)
-            cleaned_struct_pres_abs.append(line)
-    sys.stderr.write('\nWriting Rtab and fa outputs\n')
-    cleaned_rtab_pres_abs = "\n".join(cleaned_rtab_pres_abs)
-    cleaned_pan_genome_reference = ">".join(cleaned_pan_genome_reference)
-    cleaned_struct_pres_abs = "\n".join(cleaned_struct_pres_abs)
+        for line in range(len(rtab_pres_abs)):
+            cog_names = rtab_pres_abs[line].split("\t")[0]
+            split_cog_names = cog_names.split("~~~")
+            key_split = key.split("~~~")
+            if all(k_name in split_cog_names for k_name in key_split):
+                rtab_pres_abs[line] = rtab_pres_abs[line].replace(cog_names, value)
     with open(os.path.join(graph_dir, "gene_presence_absence.Rtab"), "w") as outRtab:
-        outRtab.write(cleaned_rtab_pres_abs)
+        outRtab.write("\n".join(rtab_pres_abs))
+    del rtab_pres_abs
+    sys.stderr.write('\nUpdating pan_genome_reference.fa\n')
+    with open(os.path.join(graph_dir, "pan_genome_reference.fa"), "r") as refFile:
+        pan_genome_reference = refFile.read().split(">")
+    for key, value in tqdm(updated_cog_dict.items()):
+        # update pan_genome_reference.fa
+        for line in range(len(pan_genome_reference)):
+            cog_names = pan_genome_reference[line].split("\n")[0]
+            split_cog_names = cog_names.split("~~~")
+            k_split = key.split("~~~")
+            if all(k in split_cog_names for k in k_split):
+                pan_genome_reference[line] = pan_genome_reference[line].replace(cog_names, value)
+    pan_genome_reference = ">".join(pan_genome_reference)
     with open(os.path.join(graph_dir, "pan_genome_reference.fa"), "w") as outRefFile:
-        outRefFile.write(cleaned_pan_genome_reference))
+        outRefFile.write(pan_genome_reference)
+    del pan_genome_reference
+    sys.stderr.write('\nUpdating struct_presence_absence.Rtab\n')
+    with open(os.path.join(graph_dir, "struct_presence_absence.Rtab"), "r") as inStruct:
+        struct_pres_abs = inStruct.read().splitlines()
+    # update struct_presence_absence.rtab
+    for line in tqdm(range(len(struct_pres_abs))):
+        cog_names = struct_pres_abs[line].split("\t")[0]
+        split_cog_names = cog_names.split("-")
+        for key, value in updated_cog_dict.items():
+            for name in split_cog_names:
+                if name == key:
+                    struct_pres_abs[line] = struct_pres_abs[line].replace(name, value)
+    struct_pres_abs = "\n".join(struct_pres_abs)
     with open(os.path.join(graph_dir, "struct_presence_absence.Rtab"), "w") as outStructFile:
-        outStructFile.write(cleaned_struct_pres_abs)
+        outStructFile.write(struct_pres_abs)
+    del struct_pres_abs
 
 def generate_library(graph_dir,
                      index_no,
