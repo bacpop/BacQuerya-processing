@@ -175,10 +175,10 @@ def update_panaroo_outputs(G,
     del G
     # update gene_data.csv
     sys.stderr.write('\nUpdating all gene_data.csv file\n')
-    for k, v in tqdm(cluster_name_dict.items()):
-        annotation_row_index = list(gene_data["clustering_id"]).index(k)
-        gene_data["gene_name"][annotation_row_index] = cluster_name_dict[k]["name"]
-        gene_data["description"][annotation_row_index] = cluster_name_dict[k]["description"]
+    for row in tqdm(range(len(gene_data["clustering_id"]))):
+        if gene_data["clustering_id"][row] in cluster_name_dict.keys():
+            gene_data["gene_name"][row] = cluster_name_dict[gene_data["clustering_id"][row]]["name"]
+            gene_data["description"][row] = cluster_name_dict[gene_data["clustering_id"][row]]["description"]
     gene_data.to_csv(os.path.join(graph_dir, "gene_data.csv"), index=False)
     del gene_data
     # update gene_presence_absence.csv and gene_presence_absence.rtab

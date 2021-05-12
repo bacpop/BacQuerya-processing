@@ -104,8 +104,6 @@ def elasticsearch_isolates(allIsolatesJson,
         # iterate through features
         for line in tqdm(item):
             if "gene_index" in line.keys():
-                client = Elasticsearch([ELASTIC_API_URL],
-                            api_key=(ELASTIC_API_ID, ELASTIC_API_KEY))
                 response = client.index(index = index_name,
                                         id = line["gene_index"],
                                         body = line,

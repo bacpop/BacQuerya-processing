@@ -240,7 +240,7 @@ rule run_panaroo:
     input:
         rules.reformat_annotations.output
     params:
-        threads=config['n_cpu']
+        threads=config["n_cpu"]
     output:
         directory("panaroo_output")
     shell:
