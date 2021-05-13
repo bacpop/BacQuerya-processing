@@ -199,8 +199,6 @@ def update_panaroo_outputs(G,
         roary_presence_absence["Non-unique Gene name"][roary_row_index] = non_unique
         roary_presence_absence["Annotation"][roary_row_index] = updatedDescriptions[name]
         updated_cog_dict.update({panarooNames[name]: updatedPanarooNames[name]})
-        if updatedPanarooNames[name] == "":
-            print(panarooNames[name])
     sys.stderr.write("\nWriting csv files\n")
     gene_presence_absence.to_csv(os.path.join(graph_dir, "gene_presence_absence.csv"), index=False)
     roary_presence_absence.to_csv(os.path.join(graph_dir, "gene_presence_absence_roary.csv"), index=False)
@@ -321,7 +319,7 @@ def generate_library(graph_dir,
             # supplement annotation with pfam search result. Tend to be more up to date
             if not (y["description"] == "" or y["description"] == "hypothetical protein" or y["description"] == "Hypothetical protein"):
                 panarooDescription = y["description"].split(";")
-                updatedDescriptions.append(";".join(panarooDescription))
+                updatedDescriptions.append(";".join(panarooDescription).replace(",", ";"))
                 pfamResult = None
             else:
                 panarooDescription = ["Hypothetical protein"]
@@ -331,7 +329,7 @@ def generate_library(graph_dir,
                     pfamDescriptions = pfamResult["pfam_descriptions"]
                     if isinstance(pfamDescriptions, str):
                         pfamDescriptions = [pfamDescriptions]
-                    updatedDescriptions.append(";".join(panarooDescription + pfamDescriptions))
+                    updatedDescriptions.append(";".join(panarooDescription + pfamDescriptions).replace(",", ";"))
                 else:
                     updatedDescriptions += panarooDescription
             # this is the dictionary used to inform the geneDisplay page for the frontend
@@ -519,7 +517,7 @@ def main():
     if args.elastic:
         # directly add information to elasticindex
         sys.stderr.write('\nBuilding Elastic Search index\n')
-        elasticsearch_isolates(updated_annotations, args.index_name)
+        #elasticsearch_isolates(updated_annotations, args.index_name)
     sys.stderr.write('\nWriting gene JSON files\n')
     with open(os.path.join(args.output_dir, "annotatedNodes.json"), "w") as n:
         n.write(json.dumps({"information":updated_annotations}))
