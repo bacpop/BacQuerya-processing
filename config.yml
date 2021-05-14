@@ -1,12 +1,16 @@
 # Location of BacQuerya_processing repository relative to the Snakefile
-BactQuerya_location: .
+BacQuerya_location: .
+
+# whether this run is building the reference information for a species ("reference") or processing new isolates ("query")
+# unless you are adding a new species to the indices, this has to be "query"
+run_type: query
 
 # multiprocessing option
-n_cpu: 4
+n_cpu: 3
 
 # options for extract_entrez_information
 extract_entrez_information:
-  accession_file: NCBI_requested_accessions.txt
+  accession_file: test/test_accessions.txt
   email: empty
   assembly: assembly-stats
   gff: annotation
@@ -35,11 +39,11 @@ extract_assembly_stats:
 
 # options for index_isolate_attributes
 index_isolate_attributes:
-  index: isolate_index
+  index: isolate_index_3
 
 # options for index_gene_features
 index_sequences:
   kmer_length: 31
   gene_type: gene
-  elasticSearchIndex: gene_index
+  elasticSearchIndex: gene_index_3
   assembly_type: assembly

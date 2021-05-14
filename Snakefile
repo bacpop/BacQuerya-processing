@@ -240,26 +240,39 @@ rule run_panaroo:
     input:
         rules.reformat_annotations.output
     params:
-        threads=config["n_cpu"]
+        threads=config["n_cpu"],
+        run_type=config["run_type"]
     output:
         directory("panaroo_output")
-    shell:
-        "panaroo -i {input}/*.gff -o {output} --clean-mode sensitive -t {params.threads}"
+    run:
+        if params.run_type == "reference":
+            num_annotations = len(glob.glob(os.path.join(input[0], "*.gff")))
+            if num_annotations > 1:
+                shell("panaroo -i {input}/*.gff -o {output} --clean-mode sensitive -t {params.threads}")
+            else:
+                shell("mkdir {output}")
+        else:
+            shell("mkdir {output}")
 
 # merge current panaroo output with previous panaroo outputs
 rule merge_panaroo:
     input:
-        current_output=rules.run_panaroo.output
+        current_output=rules.run_panaroo.output,
+        annotation_dir=rules.reformat_annotations.output
     params:
-        threads=config['n_cpu']
+        threads=config['n_cpu'],
+        run_type=config["run_type"]
     output:
         touch("merge_panaroo.done")
     run:
-        if os.path.exists("previous_run"):
-            shell("panaroo-merge -d {input.current_output} previous_run/panaroo_output -o {input.current_output} -t {params.threads}")
-        else:
-            os.mkdir("previous_run")
-            shell("cp -r {input.current_output} previous_run")
+        annotation_files = glob.glob(os.path.join(input.annotation_dir[0], "*.gff"))
+        if params.run_type == "reference":
+            if len(annotation_files) > 1:
+                if os.path.exists("previous_run"):
+                    shell("mkdir merged_panaroo_output && panaroo-merge -d {input.current_output} previous_run/panaroo_output -o merged_panaroo_output -t {params.threads} && cp -rf merged_panaroo_output/* panaroo_output && rm -rf merged_panaroo_output")
+            if len(annotation_files) == 1:
+                shell_command = " mkdir merged_panaroo_output && panaroo-integrate -d {input.current_output}/ -i " + annotation_files[0] + " -t {params.threads} -o merged_panaroo_output && && cp -rf merged_panaroo_output/* panaroo_output && rm -rf merged_panaroo_output"
+                shell(shell_command)
 
 # build isolate JSONS from assembly-stats
 rule extract_assembly_stats:
@@ -278,19 +291,20 @@ rule extract_assembly_stats:
 # build gene JSONS from GFF and sequence files
 rule extract_genes:
     input:
-        annotations=rules.unzip_annotations.output,
+        annotations=rules.reformat_annotations.output,
         genomes=rules.unzip_genomes.output,
         assemblyStatDir=rules.extract_assembly_stats.output,
         graphDir=rules.run_panaroo.output,
-        merged_panaroo=rules.merge_panaroo.output
+        merged_panaroo=rules.merge_panaroo.output,
     output:
         directory("extracted_genes")
     params:
         index=config['extract_assembly_stats']['index_file'],
         threads=config['n_cpu'],
-        index_name=config['index_sequences']['elasticSearchIndex']
+        index_name=config['index_sequences']['elasticSearchIndex'],
+        run_type=config["run_type"]
     shell:
-       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.assemblyStatDir}/isolateAssemblyAttributes.json -k {input.assemblyStatDir}/indexIsolatePairs.json -i {params.index} -o {output} --threads {params.threads} --elastic-index --index-name {params.index_name} --biosampleJSON {input.assemblyStatDir}/biosampleIsolatePairs.json'
+       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.assemblyStatDir}/isolateAssemblyAttributes.json -k {input.assemblyStatDir}/indexIsolatePairs.json -i {params.index} -o {output} --threads {params.threads} --elastic-index --index-name {params.index_name} --biosampleJSON {input.assemblyStatDir}/biosampleIsolatePairs.json --prev-dir previous_run --run-type {params.run_type}'
 
 # generate mafft alignments for panaroo output
 rule mafft_align:

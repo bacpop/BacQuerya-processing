@@ -152,7 +152,8 @@ def main():
 
     if not os.path.exists(os.path.join(args.prev_run, os.path.basename(args.accessionFile))):
         sys.stderr.write("\nCopying current run data into " + args.prev_run + "\n")
-        subprocess_command = "cp -r "
+        subprocess_command = "mkdir " + args.prev_run + " && "
+        subprocess_command += "cp -r "
         subprocess_command += args.ncbi_metadata + " "
         subprocess_command += args.geneMetadataDir + " "
         subprocess_command += args.accessionFile + " "
@@ -181,7 +182,7 @@ def main():
         sys.stderr.write("\nMerging current and previous gene metadata\n")
         # copy panarooPairs into previous run dir
         panarooPairs = os.path.join(args.geneMetadataDir, "panarooPairs.json")
-        subprocess.run("cp " + panarooPairs + " " + os.path.join(args.prev_run, panarooPairs),shell=True, check=True)
+        subprocess.run("cp -rf" + panarooPairs + " " + os.path.join(args.prev_run, panarooPairs),shell=True, check=True)
         mergeGeneMetadata(args.geneMetadataDir,
                           args.prev_run)
         sys.stderr.write("\nDone\n")
