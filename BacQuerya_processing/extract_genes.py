@@ -399,6 +399,7 @@ def query_isolates(annotation_file,
                    output_dir,
                    panaroo_pairs,
                    label_accession_pairs,
+                   isolateIndexJSON,
                    threads):
     """Integrate single isolates into existing panaroo graph then extract annotated genes"""
     # use panaroo integrate to add a single isolate to the graph
@@ -409,10 +410,10 @@ def query_isolates(annotation_file,
     subprocess.run(integrate_command, check=True, shell=True)
     # extract the genes annotated in the isolates genome
     G = nx.read_gml(os.path.join(temp_dir, "final_graph.gml"))
-    gene_data = pd.read_csv(os.path.join(graph_dir, "gene_data.csv"))
+    gene_data = pd.read_csv(os.path.join(temp_dir, "gene_data.csv"))
     gene_data_json = {}
     for row in tqdm(range(len(gene_data))):
-        if gene_data["gff_file"] == isolate_label:
+        if gene_data["gff_file"][row] == isolate_label:
             cluster_dict = {gene_data["clustering_id"][row] : gene_data["annotation_id"][row]}
             gene_data_json.update(cluster_dict)
     query_dicts = {}
@@ -426,24 +427,22 @@ def query_isolates(annotation_file,
             for key, value in panaroo_pairs.items():
                 if any(name in value["panarooNames"] for name in splitNames):
                     assigned_index_no = int(key)
-                    all_names_set.add(value["consistentNames"])
                 else:
-                    #assigned_index_no = index_no
+                    assigned_index_no = None
                     #index_no += 1
-                    print(gene_names)
-            if isolate_label in member_labels:
+            if isolate_label in member_labels and assigned_index_no:
                 biosample_label = label_accession_pairs[isolate_label]
                 annotation_id = gene_data_json[y["geneIDs"].split(";")[member_labels.index(isolate_label)]]
                 isolate_index = isolateIndexJSON[isolate_label]
                 annotation_dict = {"gene_index": assigned_index_no,
-                                   "foundIn_labels": isolate_label,
-                                   "foundIn_indices": isolate_index,
-                                   "foundIn_biosamples": biosample_label,
-                                   "member_annotation_ids": annotation_id}
+                                   "foundIn_labels": [isolate_label],
+                                   "foundIn_indices": [isolate_index],
+                                   "foundIn_biosamples": [biosample_label],
+                                   "member_annotation_ids": [annotation_id]}
                 query_dicts[assigned_index_no] = annotation_dict
     shutil.rmtree(temp_dir)
     return query_dicts
-
+# cd-hit 4.8.1 works
 
 def append_gene_indices(isolate_file, genes_contained):
     """Add indices of all genes within the isolate to the isolate attribute json"""
@@ -521,27 +520,29 @@ def main():
         # parrallelise writing of gene-specific files for indexing
         # if we're indexing non-reference isolates, we need to query against the graph and only add new nodes.
         # we also need to add the isolate to the list of isolates containing the gene in the elastic index, annotatedNodes.json and the panaroo outputs
+        query_dicts = []
         for job in tqdm(job_list):
-            query_dicts = Parallel(n_jobs=args.n_cpu)(delayed(query_isolates)(annotation_file,
+            query_dicts += Parallel(n_jobs=args.n_cpu)(delayed(query_isolates)(annotation_file,
                                                                               args.graph_dir,
                                                                               args.prev_dir,
                                                                               args.output_dir,
                                                                               panaroo_pairs,
                                                                               label_accession_pairs,
+                                                                              isolateIndexJSON,
                                                                               args.n_cpu) for annotation_file in job)
-            updated_annotations = query_dicts[0]
-            for annot in query_dicts[1:]:
-                for gene_key in annot.keys():
-                    annotation_to_update = updated_annotations[gene_key]
-                    annotation_to_update["foundIn_labels"] = annotation_to_update["foundIn_labels"].append(annot["foundIn_labels"])
-                    annotation_to_update["foundIn_indices"] = annotation_to_update["foundIn_indices"].append(annot["foundIn_indices"])
-                    annotation_to_update["foundIn_biosamples"] = annotation_to_update["foundIn_biosamples"].append(annot["foundIn_biosamples"])
-                    annotation_to_update["member_annotation_ids"] = annotation_to_update["member_annotation_ids"].append(annot["member_annotation_ids"])
-                    updated_annotations[gene_key] = annotation_to_update
+        updated_annotations = query_dicts[0]
+        for annot in query_dicts[1:]:
+            print(annot)
+            for gene_key in annot.keys():
+                annotation_to_update = updated_annotations[gene_key]
+                annotation_to_update["foundIn_labels"] += annot["foundIn_labels"]
+                annotation_to_update["foundIn_indices"] += annot["foundIn_indices"]
+                annotation_to_update["foundIn_biosamples"] += annot["foundIn_biosamples"]
+                annotation_to_update["member_annotation_ids"] += annot["member_annotation_ids"]
+                updated_annotations[gene_key] = annotation_to_update
         # open the annotated nodes file of the reference graph
-        with open(os.path.join(args.prev_dir, "annotatedNodes.json")) as geneFile:
+        with open(os.path.join(args.prev_dir, os.path.basename(args.output_dir), "annotatedNodes.json")) as geneFile:
             annotatedNodes = json.loads(geneFile.read())
-    if elastic:
         # directly add information to elasticindex
         sys.stderr.write('\nBuilding Elastic Search index\n')
         elasticsearch_isolates(updated_genes, args.index_name)
