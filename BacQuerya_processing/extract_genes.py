@@ -289,6 +289,9 @@ def generate_reference_library(graph_dir,
     # import biosampleJSON to get the biosample accession for each isolate
     with open(biosampleJSON, "r") as bios:
         label_accession_pairs = json.loads(bios.read())
+    if os.path.exists(os.path.join(prev_dir, biosampleJSON)):
+        with open(os.path.join(prev_dir, biosampleJSON), "r") as prevBios:
+            label_accession_pairs.update(json.loads(prevBios.read()))
     annotationID_key_updated_genes = {}
     # iterate through panaroo graph to extract gene information if node is not present in panarooPairs or has been updated
     sys.stderr.write('\nExtracting node information from Panaroo graph\n')
@@ -462,8 +465,7 @@ def append_gene_indices(isolate_file, genes_contained):
             isolate_gene_indices.append(annotation_index)
             isolate_gene_names.append(annotation_name)
         if not len(isolate_gene_names) == 0:
-            isolate_dict["information"][isol_name]["consistentNames"] = isolate_gene_names
-            isolate_dict["information"][isol_name]["geneIndices"] = isolate_gene_indices
+            isolate_dict["information"][isol_name]["consistentNames"] = sorted(isolate_gene_names)
     with open(isolate_file, "w") as o:
         o.write(json.dumps(isolate_dict))
 
@@ -500,9 +502,10 @@ def main():
             consistentNames = annotation["consistentNames"]
             isolates_containing = annotation["foundIn_labels"]
             for containedIn in isolates_containing:
-                gene_list = genes_contained[containedIn]
-                gene_list.update({gene_index: consistentNames})
-                genes_contained[containedIn] = gene_list
+                if containedIn in genes_contained.keys():
+                    gene_list = genes_contained[containedIn]
+                    gene_list.update({gene_index: consistentNames})
+                    genes_contained[containedIn] = gene_list
         # add gene indices to isolate jsons
         sys.stderr.write('\nAdding gene names to isolate assembly JSONs\n')
         append_gene_indices(args.isolate_json,

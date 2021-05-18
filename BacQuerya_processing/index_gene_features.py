@@ -158,7 +158,7 @@ def main():
         representative_sequences = []
         sys.stderr.write('\nWriting gene-specific files for COBS indexing\n')
         # need to apply same constraints as those in extract_genes.py
-        for node in tqdm(G._node):
+        for node in G._node:
             y = G._node[node]
             gene_name = y["name"]
             splitNames = gene_name.split("~~~")

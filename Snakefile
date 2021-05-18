@@ -351,13 +351,10 @@ rule merge_runs:
 # build COBS index of gene sequences from the output of extract_genes
 rule index_gene_sequences:
     input:
-        input_dir=rules.extract_genes.output,
         merged_runs=rules.merge_runs.output,
-        merged_panaroo=rules.merge_panaroo.output,
         fake_input=rules.index_isolate_attributes.output,
-        graphDir=rules.run_panaroo.output
     output:
-        directory("index_genes")
+        directory("indexed_genes")
     params:
         k_mer=config['index_sequences']['kmer_length'],
         threads=config['n_cpu'],
@@ -366,9 +363,9 @@ rule index_gene_sequences:
         index_genes=config["index_genes"]
     run:
         if index_genes == "True":
-            shell('python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g {input.graphDir} -o {output} --kmer-length {params.k_mer} --threads {params.threads} --elastic-index')
+            shell('python index_gene_features-runner.py -t {params.index_type} -i previous_run/extracted_genes -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads} --elastic-index')
         if index_genes == "False":
-            shell('python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g {input.graphDir} -o {output} --kmer-length {params.k_mer} --threads {params.threads}')
+            shell('python index_gene_features-runner.py -t {params.index_type} -i previous_run/extracted_genes -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads}')
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_assembly_sequences:
@@ -388,7 +385,7 @@ rule run_pipeline:
     input:
         ncbiAssemblyStatDir=rules.extract_assembly_stats.output,
         extractedGeneMetadata=rules.extract_genes.output,
-        panarooOutput=rules.run_panaroo.output,
+        panarooOutput="panaroo_output",
         mergeRuns=rules.merge_runs.output,
         reformattedAnnotations=rules.reformat_annotations.output,
         unzippedAnnotations=rules.unzip_annotations.output,
@@ -400,6 +397,8 @@ rule run_pipeline:
         aligned_genes=rules.mafft_align.output,
         prodigal_output=rules.run_prodigal.output,
         indexed_gene_sequences=rules.index_gene_sequences.output,
-        indexed_isolates=rules.index_isolate_attributes.output
+        indexed_isolates=rules.index_isolate_attributes.output,
+        ena_metadata=rules.retrieve_ena_read_metadata.output.output_dir,
+        ena_reads=rules.retrieve_ena_reads.output
     shell:
-        'rm -rf {input.retrieved_genomes} {input.indexed_isolates} {input.prodigal_output} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'
+        'rm -rf {input.ena_metadata} {input.ena_reads} {input.retrieved_genomes} {input.indexed_isolates} {input.prodigal_output} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'
