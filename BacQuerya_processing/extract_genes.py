@@ -334,7 +334,11 @@ def generate_reference_library(graph_dir,
                 pfamResult = None
             else:
                 panarooDescription = ["Hypothetical protein"]
-                pfamResult = searchPfam(y["protein"].split(";")[0])
+                try:
+                    pfamResult = searchPfam(y["protein"].split(";")[0])
+                except ConnectionError:
+                    sys.stderr.write("\nHmmscan is not available at this time\n")
+                    pfamResult = None
                 if pfamResult:
                     # these are new descriptions identified by searching pfam
                     pfamDescriptions = pfamResult["pfam_descriptions"]
@@ -350,10 +354,9 @@ def generate_reference_library(graph_dir,
                                "foundIn_indices": isolate_indices,
                                "foundIn_biosamples": biosample_labels,
                                "member_annotation_ids": annotation_ids}
-            if assigned_index_no in panaroo_pairs.keys():
+            consistent_name = "COG_" + str(assigned_index_no)
+            if assigned_index_no in panaroo_pairs.keys() and not update_index_no:
                 consistent_name = panaroo_pairs[assigned_index_no]["consistentNames"]
-            else:
-                consistent_name = "COG_" + str(assigned_index_no)
             if pfamResult:
                 annotation_dict.update(pfamResult)
             reject_list = ["group_", "PRED_"]
@@ -428,6 +431,7 @@ def query_isolates(annotation_file,
                 if any(name in value["panarooNames"] for name in splitNames):
                     assigned_index_no = int(key)
                 else:
+                    # we currently skip annotations that are not in the reference graph
                     assigned_index_no = None
                     #index_no += 1
             if isolate_label in member_labels and assigned_index_no:
@@ -454,12 +458,12 @@ def append_gene_indices(isolate_file, genes_contained):
         isolate_gene_names = []
         isolate_non_CDS = []
         isolateMetadataName = isolate_dict["information"][isol_name]["isolateNameUnderscore"]
-        for annotation_line in genes_contained[isolateMetadataName]:
-            if "panarooNames" in annotation_line.keys():
-                isolate_gene_indices.append(annotation_line["gene_index"])
-                isolate_gene_names.append(annotation_line["consistentNames"])
+        for annotation_index, annotation_name in genes_contained[isolateMetadataName].items():
+            isolate_gene_indices.append(annotation_index)
+            isolate_gene_names.append(annotation_name)
         if not len(isolate_gene_names) == 0:
             isolate_dict["information"][isol_name]["consistentNames"] = isolate_gene_names
+            isolate_dict["information"][isol_name]["geneIndices"] = isolate_gene_indices
     with open(isolate_file, "w") as o:
         o.write(json.dumps(isolate_dict))
 
@@ -491,13 +495,13 @@ def main():
         sys.stderr.write('\nExtracting gene names for each isolate\n')
         genes_contained = {}
         for isol in isolate_labels:
-            genes_contained[isol] = []
+            genes_contained.update({isol : {}})
         for gene_index, annotation in tqdm(updated_genes.items()):
             consistentNames = annotation["consistentNames"]
             isolates_containing = annotation["foundIn_labels"]
             for containedIn in isolates_containing:
                 gene_list = genes_contained[containedIn]
-                gene_list.append(annotation)
+                gene_list.update({gene_index: consistentNames})
                 genes_contained[containedIn] = gene_list
         # add gene indices to isolate jsons
         sys.stderr.write('\nAdding gene names to isolate assembly JSONs\n')
@@ -530,19 +534,39 @@ def main():
                                                                               label_accession_pairs,
                                                                               isolateIndexJSON,
                                                                               args.n_cpu) for annotation_file in job)
-        updated_annotations = query_dicts[0]
+        updated_genes = query_dicts[0]
         for annot in query_dicts[1:]:
-            print(annot)
             for gene_key in annot.keys():
-                annotation_to_update = updated_annotations[gene_key]
-                annotation_to_update["foundIn_labels"] += annot["foundIn_labels"]
-                annotation_to_update["foundIn_indices"] += annot["foundIn_indices"]
-                annotation_to_update["foundIn_biosamples"] += annot["foundIn_biosamples"]
-                annotation_to_update["member_annotation_ids"] += annot["member_annotation_ids"]
-                updated_annotations[gene_key] = annotation_to_update
+                if gene_key in updated_genes.keys():
+                    annotation_to_update = updated_genes[gene_key]
+                    annotation_to_update["foundIn_labels"] += annot["foundIn_labels"]
+                    annotation_to_update["foundIn_indices"] += annot["foundIn_indices"]
+                    annotation_to_update["foundIn_biosamples"] += annot["foundIn_biosamples"]
+                    annotation_to_update["member_annotation_ids"] += annot["member_annotation_ids"]
+                    updated_genes[gene_key] = annotation_to_update
+                else:
+                    annotation_to_update["foundIn_labels"] = annot["foundIn_labels"]
+                    annotation_to_update["foundIn_indices"] = annot["foundIn_indices"]
+                    annotation_to_update["foundIn_biosamples"] = annot["foundIn_biosamples"]
+                    annotation_to_update["member_annotation_ids"] = annot["member_annotation_ids"]
+                    updated_genes[gene_key] = annotation_to_update
+    sys.stderr.write("\nAdding query isolate information to gene JSON file\n")
+    if os.path.exists(os.path.join(args.prev_dir, os.path.basename(args.output_dir), "annotatedNodes.json")):
         # open the annotated nodes file of the reference graph
         with open(os.path.join(args.prev_dir, os.path.basename(args.output_dir), "annotatedNodes.json")) as geneFile:
             annotatedNodes = json.loads(geneFile.read())
+        for index_no, updated_info in tqdm(updated_genes.keys()):
+            if index_no in annotatedNodes["information"].keys():
+                nodeToUpdate = annotatedNodes["information"][index_no]
+                nodeToUpdate["foundIn_labels"] += updated_info["foundIn_labels"]
+                nodeToUpdate["foundIn_indices"] += updated_info["foundIn_indices"]
+                nodeToUpdate["foundIn_biosamples"] += updated_info["foundIn_biosamples"]
+                nodeToUpdate["member_annotation_ids"] += updated_info["member_annotation_ids"]
+                annotatedNodes["information"][index_no] = nodeToUpdate
+            else:
+                annotatedNodes["information"][index_no] = updated_info
+        with open(os.path.join(args.prev_dir, os.path.basename(args.output_dir), "annotatedNodes.json"), "w") as n:
+            n.write(json.dumps(annotatedNodes))
         # directly add information to elasticindex
         sys.stderr.write('\nBuilding Elastic Search index\n')
         elasticsearch_isolates(updated_genes, args.index_name)

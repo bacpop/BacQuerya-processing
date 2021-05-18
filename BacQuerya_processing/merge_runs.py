@@ -101,7 +101,7 @@ def mergeGeneMetadata(current_geneDir, prev_dir):
         previousGeneJSON = previousGeneFile.read()
     currentGeneDicts = json.loads(currentGeneJSON)["information"]
     updatedGeneDict = json.loads(previousGeneJSON)
-    updatedGeneDict["information"] += currentGeneDicts
+    updatedGeneDict["information"].update(currentGeneDicts)
     with open(previous_metadataFile, "w") as updatedGeneFile:
        updatedGeneFile.write(json.dumps(updatedGeneDict))
 

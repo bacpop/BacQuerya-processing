@@ -75,44 +75,6 @@ rule retrieve_sra_read_metadata:
     shell:
        'python extract_read_metadata-runner.py -s {input} -r sra -e {params.email} --threads {params.threads} -o {output.output_dir}'
 
-# retrieve ena read metadata
-rule retrieve_ena_read_metadata:
-    input:
-        config['extract_read_metadata']['accession_file']
-    output:
-        output_dir=directory('retrieved_ena_read_metadata'),
-        run_accessions="retrieved_ena_read_metadata/fastq_links.txt",
-        isolateJSON="retrieved_ena_read_metadata/isolateReadAttributes.json"
-    params:
-        index=config['extract_assembly_stats']['index_file'],
-        email=config['extract_entrez_information']['email'],
-        threads=config['n_cpu']
-    shell:
-       'python extract_read_metadata-runner.py -s {input} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir}'
-
-# retrieve raw reads from ENA
-rule retrieve_ena_reads:
-    input:
-        rules.retrieve_ena_read_metadata.output.run_accessions
-    params:
-        threads=config['n_cpu']
-    output:
-        directory("retrieved_ena_reads")
-    run:
-        def download_read(accession, output_dir):
-            shell_command = "wget --no-check-certificate --directory-prefix " + output_dir + " " + accession
-            subprocess.run(shell_command, check=True, shell=True)
-
-        with open(input[0], "r") as f:
-            run_accessions = f.read().splitlines()
-        job_list = [
-            run_accessions[i:i + params.threads] for i in range(0, len(run_accessions), params.threads)
-        ]
-        for job in tqdm(job_list):
-            Parallel(n_jobs=params.threads)(delayed(download_read)(access,
-                                                                   output[0]) for access in job)
-        #'ascp -QT -l 300m -P33001 -i ~/.aspera/connect/etc/asperaweb_id_dsa.openssh era-fasp@fasp.sra.ebi.ac.uk:vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz {output}' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_1.fastq.gz
-
 # gunzip genome files
 rule unzip_genomes:
     input:
@@ -288,6 +250,45 @@ rule extract_assembly_stats:
     shell:
        'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output}/isolateAssemblyAttributes.json -k {output}/indexIsolatePairs.json -b {output}/biosampleIsolatePairs.json -e {params.email} --previous-run previous_run --threads {params.threads}'
 
+# retrieve ena read metadata
+rule retrieve_ena_read_metadata:
+    input:
+        access_file=config['extract_read_metadata']['accession_file'],
+        entrez_isolates=rules.extract_assembly_stats.output
+    output:
+        output_dir=directory('retrieved_ena_read_metadata'),
+        run_accessions="retrieved_ena_read_metadata/fastq_links.txt",
+        isolateJSON="retrieved_ena_read_metadata/isolateReadAttributes.json"
+    params:
+        index=config['extract_assembly_stats']['index_file'],
+        email=config['extract_entrez_information']['email'],
+        threads=config['n_cpu']
+    shell:
+       'python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir}'
+
+# retrieve raw reads from ENA
+rule retrieve_ena_reads:
+    input:
+        rules.retrieve_ena_read_metadata.output.run_accessions
+    params:
+        threads=config['n_cpu']
+    output:
+        directory("retrieved_ena_reads")
+    run:
+        def download_read(accession, output_dir):
+            shell_command = "wget --no-check-certificate --directory-prefix " + output_dir + " " + accession
+            subprocess.run(shell_command, check=True, shell=True)
+
+        with open(input[0], "r") as f:
+            run_accessions = f.read().splitlines()
+        job_list = [
+            run_accessions[i:i + params.threads] for i in range(0, len(run_accessions), params.threads)
+        ]
+        for job in tqdm(job_list):
+            Parallel(n_jobs=params.threads)(delayed(download_read)(access,
+                                                                   output[0]) for access in job)
+        #'ascp -QT -l 300m -P33001 -i ~/.aspera/connect/etc/asperaweb_id_dsa.openssh era-fasp@fasp.sra.ebi.ac.uk:vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz {output}' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_1.fastq.gz
+
 # build gene JSONS from GFF and sequence files
 rule extract_genes:
     input:
@@ -362,8 +363,12 @@ rule index_gene_sequences:
         threads=config['n_cpu'],
         index_type=config['index_sequences']['gene_type'],
         elasticIndex=config['index_sequences']['elasticSearchIndex'],
-    shell:
-       'python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g {input.graphDir} -o {output} --kmer-length {params.k_mer} --threads {params.threads}'
+        index_genes=config["index_genes"]
+    run:
+        if index_genes == "True":
+            shell('python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g {input.graphDir} -o {output} --kmer-length {params.k_mer} --threads {params.threads} --elastic-index')
+        if index_genes == "False":
+            shell('python index_gene_features-runner.py -t {params.index_type} -i {input.input_dir} -g {input.graphDir} -o {output} --kmer-length {params.k_mer} --threads {params.threads}')
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_assembly_sequences:

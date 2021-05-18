@@ -3,14 +3,17 @@ BacQuerya_location: .
 
 # whether this run is building the reference information for a species ("reference") or processing new isolates ("query")
 # unless you are adding a new species to the indices, this has to be "query"
-run_type: query
+run_type: reference
+
+# needed for a "reference" run. Tells snakemake to add gene information merged together from all runs to the elastic gene index
+index_genes: False
 
 # multiprocessing option
 n_cpu: 3
 
 # options for extract_entrez_information
 extract_entrez_information:
-  accession_file: test/test_accessions.txt
+  accession_file: NCBI_requested_accessions.txt
   email: empty
   assembly: assembly-stats
   gff: annotation

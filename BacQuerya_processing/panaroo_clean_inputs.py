@@ -195,13 +195,13 @@ def merge_all_annotations(all_region_names,
                 position_tuple = (int(predicted_split[3]), int(predicted_split[4]))
                 if not position_tuple in positions:
                     annotations_to_add.append(predicted_line)
-            merged_annotation = region_annotation.splitlines() + annotations_to_add
+            merged_annotation = region_annotation.splitlines() #+ annotations_to_add
             predicted_regions_merged.append(region_label)
             all_merged_annotations += merged_annotation
     # adds predicted annotations for regions that don't already have existing annotations
-    for predicted_region_label in range(len(predicted_region_names)):
-        if not predicted_region_names[predicted_region_label] in predicted_regions_merged:
-            all_merged_annotations += all_predicted_annotations[predicted_region_label].splitlines()
+   # for predicted_region_label in range(len(predicted_region_names)):
+      #  if not predicted_region_names[predicted_region_label] in predicted_regions_merged:
+         #   all_merged_annotations += all_predicted_annotations[predicted_region_label].splitlines()
     return all_region_names, all_merged_annotations
 
 def concatenate_inputs(annotation_file,
