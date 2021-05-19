@@ -15,7 +15,7 @@ import sys
 from tqdm import tqdm
 import tempfile
 
-from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_API_ID, ELASTIC_API_KEY
+from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY
 
 def get_options():
 
@@ -100,7 +100,7 @@ def elasticsearch_isolates(allIsolatesJson,
     sys.stderr.write('\nIndexing CDS features\n')
     for keys in tqdm(partioned_items):
         client = Elasticsearch([ELASTIC_API_URL],
-                                api_key=(ELASTIC_API_ID, ELASTIC_API_KEY))
+                                api_key=(ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY))
         # iterate through features
         for line in tqdm(keys):
             response = client.index(index = index_name,
