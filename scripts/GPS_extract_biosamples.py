@@ -6,8 +6,6 @@ This script uses Biopython ENTREZ to retrieve and download information of intere
 """
 from Bio import Entrez
 from joblib import Parallel, delayed
-import json
-import os
 import pandas as pd
 import sys
 from tqdm import tqdm
@@ -62,11 +60,10 @@ def download_SRA_metadata(cleaned_accession,
     successful_accessions = []
     Entrez.email = email
     Entrez.api_key = ENTREZ_API_KEY
-    print(cleaned_accession)
-    handle = Entrez.esearch(db="assembly", term=cleaned_accession, retmax = number)
+    handle = Entrez.esearch(db="sra", term=cleaned_accession, retmax = number)
     result = Entrez.read(handle)
     try:
-        biosample_id = handle['IdList'][0]
+        biosample_id = result['IdList'][0]
         print(biosample_id)
         successful_accessions.append(biosample_id)
     except:
