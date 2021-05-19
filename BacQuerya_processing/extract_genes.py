@@ -184,7 +184,7 @@ def update_panaroo_outputs(G,
             y["name"] = node_gene_name
             y["description"] = node_annotation
     # overwrite the previous graph
-    nx.write_gml(G, os.path.join(graph_dir, "final_graph1.gml"))
+    nx.write_gml(G, os.path.join(graph_dir, "final_graph.gml"))
     del G
     # update gene_data.csv
     gene_data_dict = {}
@@ -348,7 +348,7 @@ def generate_reference_library(graph_dir,
                 panarooDescription = ["Hypothetical protein"]
                 try:
                     pfamResult = searchPfam(y["protein"].split(";")[0])
-                except ConnectionError:
+                except requests.exceptions.ConnectionError:
                     sys.stderr.write("\nHmmscan is not available at this time\n")
                     pfamResult = None
                 if pfamResult:
