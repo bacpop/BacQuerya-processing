@@ -6,7 +6,7 @@ BacQuerya_location: .
 run_type: reference
 
 # needed for a "reference" run. Tells snakemake to add gene information merged together from all runs to the elastic gene index
-index_genes: True
+index_genes: False
 
 # multiprocessing option
 n_cpu: 3
@@ -16,7 +16,7 @@ GPS: False
 
 # options for extract_entrez_information
 extract_entrez_information:
-  accession_file: NCBI_requested_accessions.txt
+  accession_file: GPS_assembly_biosamples.txt
   email: empty
   assembly: assembly-stats
   gff: annotation
@@ -24,7 +24,7 @@ extract_entrez_information:
 
 # options to extract sequence reads
 extract_read_metadata:
-  accession_file:  EBI_requested_accessions.txt
+  accession_file:  GPS_read_ERS.txt
 
 # options for single_meryl_dbs
 single_meryl_dbs:
