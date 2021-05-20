@@ -2,7 +2,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-This script uses Biopython ENTREZ to retrieve and download information of interest available through NCBI.
+This script uses Biopython ENTREZ to retrieve BioSample accession IDs for isolate run accessions in the GPS database
 """
 from Bio import Entrez
 from joblib import Parallel, delayed
@@ -55,7 +55,8 @@ def get_options():
 
 def download_biosamples(cleaned_accession,
                           email,
-                          number):
+                          number,
+                          output_file):
     """Download the biosample accession for accessions of interest using Biopython Entrez"""
     Entrez.email = email
     Entrez.api_key = ENTREZ_API_KEY
@@ -67,11 +68,14 @@ def download_biosamples(cleaned_accession,
         esummary_record = Entrez.read(esummary_handle, validate = False)
         biosample_id = esummary_record["DocumentSummarySet"]["DocumentSummary"][0]["Accession"]
         successful_accessions.append(biosample_id)
-        return biosample_id
+        with open(output_file, "a") as outFile:
+            outFile.write(biosample_id + "\n")
     except:
         # issue with the request. Re-requesting often solves
         sys.stderr.write("\nRequest failed, the following accession will be re-requested: " + cleaned_accession + "\n")
-        return []
+        with open("failed.txt", "a") as failedFIle:
+            failedFIle.write(cleaned_accession + "\n")
+    return successful_accessions
 
 def main():
     """Main function. Parses command line args and calls functions."""
@@ -84,15 +88,19 @@ def main():
             cleaned_accessions.append(access)
     del GPS_metadata
     # set wd to output_dir for urllib
+    with open("GPS_ENA_accessions.txt", "w") as gpsAccess:
+        gpsAccess.write("\n".join(cleaned_accessions))
+    cleaned_accessions = cleaned_accessions[14594:]
     sys.stderr.write("\nDownloading biosamples for " + str(len(cleaned_accessions)) + " isolates\n")
     job_list = [
         cleaned_accessions[i:i + args.n_cpu] for i in range(0, len(cleaned_accessions), args.n_cpu)
     ]
     successful_accessions = []
     for job in tqdm(job_list):
-        successful_accessions = Parallel(n_jobs=args.n_cpu)(delayed(download_biosamples)(access,
-                                                                                        args.email,
-                                                                                        args.number) for access in job)
+        successful_accessions += Parallel(n_jobs=args.n_cpu)(delayed(download_biosamples)(str(access),
+                                                                                          args.email,
+                                                                                          args.number,
+                                                                                          args.output_file) for access in job)
     # ensure available attributes are downloaded for all accessions of interest
     successful_accessions = [success for row in successful_accessions for success in row]
     successful_accessions = set(successful_accessions)
@@ -102,7 +110,8 @@ def main():
                 sys.stderr.write("\nRerequesting isolate: " + str(access) + "\n")
                 success = download_SRA_metadata(str(access),
                                                 args.email,
-                                                args.number)
+                                                args.number,
+                                                args.output_file)
                 if success != []:
                     sys.stderr.write("\nRetrieval was successful for isolate: " + str(access) + "\n")
                     successful_accessions.add(success[0])

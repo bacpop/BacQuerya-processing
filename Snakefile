@@ -15,7 +15,8 @@ rule retrieve_assembly_stats:
     params:
         email=config['extract_entrez_information']['email'],
         attribute=config['extract_entrez_information']['assembly'],
-        threads=config['n_cpu']
+        threads=config['n_cpu'],
+        GPS=config['GPS']
     shell:
        'python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}'
 
@@ -28,7 +29,8 @@ rule retrieve_annotations:
     params:
         email=config['extract_entrez_information']['email'],
         attribute=config['extract_entrez_information']['gff'],
-        threads=config['n_cpu']
+        threads=config['n_cpu'],
+        GPS=config['GPS']
     shell:
        'python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}'
 
@@ -50,7 +52,8 @@ rule retrieve_genomes:
     params:
         email=config['extract_entrez_information']['email'],
         attribute=config['extract_entrez_information']['genome'],
-        threads=config['n_cpu']
+        threads=config['n_cpu'],
+        GPS=config['GPS']
     shell:
        'python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}'
 
@@ -218,7 +221,7 @@ rule run_panaroo:
             else:
                 shell("mkdir {output}")
         if params.GPS == True:
-            shell("mkdir {output} && cp ../panaroo_gps/* {output}")
+            shell("mkdir {output} && cp panaroo_gps/* {output}")
         if os.path.exists("panaroo_output2"):
             shell("mkdir {output} && cp panaroo_output2/* {output}")
 
@@ -268,9 +271,10 @@ rule retrieve_ena_read_metadata:
     params:
         index=config['extract_assembly_stats']['index_file'],
         email=config['extract_entrez_information']['email'],
-        threads=config['n_cpu']
+        threads=config['n_cpu'],
+        GPS=config["GPS"]
     shell:
-       'python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir}'
+       'python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --GPS {params.GPS}'
 
 # retrieve raw reads from ENA
 rule retrieve_ena_reads:
@@ -414,7 +418,6 @@ rule run_pipeline:
         prodigal_output=rules.run_prodigal.output,
         indexed_gene_sequences=rules.index_gene_sequences.output,
         indexed_isolates=rules.index_isolate_attributes.output,
-        ena_metadata=rules.retrieve_ena_read_metadata.output.output_dir,
-        ena_reads=rules.retrieve_ena_reads.output
+        ena_metadata=rules.retrieve_ena_read_metadata.output.output_dir
     shell:
-        'rm -rf {input.ena_metadata} {input.ena_reads} {input.retrieved_genomes} {input.indexed_isolates} {input.prodigal_output} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'
+        'rm -rf {input.ena_metadata} {input.retrieved_genomes} {input.indexed_isolates} {input.prodigal_output} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'
