@@ -53,23 +53,25 @@ def get_options():
     args = parser.parse_args()
     return (args)
 
-def download_SRA_metadata(cleaned_accession,
+def download_biosamples(cleaned_accession,
                           email,
                           number):
     """Download the biosample accession for accessions of interest using Biopython Entrez"""
-    successful_accessions = []
     Entrez.email = email
     Entrez.api_key = ENTREZ_API_KEY
+    successful_accessions = []
     handle = Entrez.esearch(db="sra", term=cleaned_accession, retmax = number)
     result = Entrez.read(handle)
     try:
-        biosample_id = result['IdList'][0]
-        print(biosample_id)
+        esummary_handle = Entrez.esummary(db="biosample", id=result['IdList'][0], report="full")
+        esummary_record = Entrez.read(esummary_handle, validate = False)
+        biosample_id = esummary_record["DocumentSummarySet"]["DocumentSummary"][0]["Accession"]
         successful_accessions.append(biosample_id)
+        return biosample_id
     except:
         # issue with the request. Re-requesting often solves
         sys.stderr.write("\nRequest failed, the following accession will be re-requested: " + cleaned_accession + "\n")
-    return successful_accessions
+        return []
 
 def main():
     """Main function. Parses command line args and calls functions."""
@@ -77,9 +79,9 @@ def main():
     GPS_metadata = pd.read_csv(args.metadata_csv)
     sample_list = list(GPS_metadata["ERS"])
     cleaned_accessions = []
-    for access in range(len(sample_list)):
-        if not sample_list[access] == "":
-            cleaned_accessions.append(sample_list[access])
+    for access in sample_list:
+        if not access == "":
+            cleaned_accessions.append(access)
     del GPS_metadata
     # set wd to output_dir for urllib
     sys.stderr.write("\nDownloading biosamples for " + str(len(cleaned_accessions)) + " isolates\n")
@@ -88,9 +90,9 @@ def main():
     ]
     successful_accessions = []
     for job in tqdm(job_list):
-        successful_accessions += Parallel(n_jobs=args.n_cpu)(delayed(download_SRA_metadata)(access,
-                                                                                            args.email,
-                                                                                            args.number) for access in job)
+        successful_accessions = Parallel(n_jobs=args.n_cpu)(delayed(download_biosamples)(access,
+                                                                                        args.email,
+                                                                                        args.number) for access in job)
     # ensure available attributes are downloaded for all accessions of interest
     successful_accessions = [success for row in successful_accessions for success in row]
     successful_accessions = set(successful_accessions)
@@ -104,6 +106,8 @@ def main():
                 if success != []:
                     sys.stderr.write("\nRetrieval was successful for isolate: " + str(access) + "\n")
                     successful_accessions.add(success[0])
+    with open(args.output_file, "w") as outFile:
+        outFile.write("\n".join(successful_accessions))
     sys.exit(0)
 
 if __name__ == '__main__':

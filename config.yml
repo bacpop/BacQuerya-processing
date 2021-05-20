@@ -6,10 +6,13 @@ BacQuerya_location: .
 run_type: reference
 
 # needed for a "reference" run. Tells snakemake to add gene information merged together from all runs to the elastic gene index
-index_genes: False
+index_genes: True
 
 # multiprocessing option
 n_cpu: 3
+
+# if this is to index the GPS data
+GPS: False
 
 # options for extract_entrez_information
 extract_entrez_information:
@@ -42,11 +45,11 @@ extract_assembly_stats:
 
 # options for index_isolate_attributes
 index_isolate_attributes:
-  index: isolate_index_3
+  index: isolate_index
 
 # options for index_gene_features
 index_sequences:
   kmer_length: 31
   gene_type: gene
-  elasticSearchIndex: gene_index_3
+  elasticSearchIndex: gene_index
   assembly_type: assembly

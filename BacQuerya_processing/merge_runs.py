@@ -182,7 +182,7 @@ def main():
         sys.stderr.write("\nMerging current and previous gene metadata\n")
         # copy panarooPairs into previous run dir
         panarooPairs = os.path.join(args.geneMetadataDir, "panarooPairs.json")
-        subprocess.run("cp -rf" + panarooPairs + " " + os.path.join(args.prev_run, panarooPairs),shell=True, check=True)
+        subprocess.run("cp -rf " + panarooPairs + " " + os.path.join(args.prev_run, panarooPairs),shell=True, check=True)
         mergeGeneMetadata(args.geneMetadataDir,
                           args.prev_run)
         sys.stderr.write("\nDone\n")

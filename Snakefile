@@ -203,18 +203,24 @@ rule run_panaroo:
         rules.reformat_annotations.output
     params:
         threads=config["n_cpu"],
-        run_type=config["run_type"]
+        run_type=config["run_type"],
+        GPS=config['GPS']
     output:
         directory("panaroo_output")
     run:
-        if params.run_type == "reference":
-            num_annotations = len(glob.glob(os.path.join(input[0], "*.gff")))
-            if num_annotations > 1:
-                shell("panaroo -i {input}/*.gff -o {output} --clean-mode sensitive -t {params.threads}")
+        if not (params.GPS == "True" or os.path.exists("panaroo_output2")):
+            if params.run_type == "reference":
+                num_annotations = len(glob.glob(os.path.join(input[0], "*.gff")))
+                if num_annotations > 1:
+                    shell("panaroo -i {input}/*.gff -o {output} --clean-mode sensitive -t {params.threads}")
+                else:
+                    shell("mkdir {output}")
             else:
                 shell("mkdir {output}")
-        else:
-            shell("mkdir {output}")
+        if params.GPS == True:
+            shell("mkdir {output} && cp ../panaroo_gps/* {output}")
+        if os.path.exists("panaroo_output2"):
+            shell("mkdir {output} && cp panaroo_output2/* {output}")
 
 # merge current panaroo output with previous panaroo outputs
 rule merge_panaroo:
@@ -228,7 +234,7 @@ rule merge_panaroo:
         touch("merge_panaroo.done")
     run:
         annotation_files = glob.glob(os.path.join(input.annotation_dir[0], "*.gff"))
-        if params.run_type == "reference":
+        if params.run_type == "reference" and not os.path.exists("panaroo_output2"):
             if len(annotation_files) > 1:
                 if os.path.exists("previous_run"):
                     shell("mkdir merged_panaroo_output && panaroo-merge -d {input.current_output} previous_run/panaroo_output -o merged_panaroo_output -t {params.threads} && cp -rf merged_panaroo_output/* panaroo_output && rm -rf merged_panaroo_output")
@@ -275,18 +281,21 @@ rule retrieve_ena_reads:
     output:
         directory("retrieved_ena_reads")
     run:
-        def download_read(accession, output_dir):
-            shell_command = "wget --no-check-certificate --directory-prefix " + output_dir + " " + accession
-            subprocess.run(shell_command, check=True, shell=True)
+        if os.path.exists("retrieved_ena_reads2"):
+            shell("mkdir {output} && cp retrieved_ena_reads2/* {output}")
+        else:
+            def download_read(accession, output_dir):
+                shell_command = "wget --no-check-certificate --directory-prefix " + output_dir + " " + accession
+                subprocess.run(shell_command, check=True, shell=True)
 
-        with open(input[0], "r") as f:
-            run_accessions = f.read().splitlines()
-        job_list = [
-            run_accessions[i:i + params.threads] for i in range(0, len(run_accessions), params.threads)
-        ]
-        for job in tqdm(job_list):
-            Parallel(n_jobs=params.threads)(delayed(download_read)(access,
-                                                                   output[0]) for access in job)
+            with open(input[0], "r") as f:
+                run_accessions = f.read().splitlines()
+            job_list = [
+                run_accessions[i:i + params.threads] for i in range(0, len(run_accessions), params.threads)
+            ]
+            for job in tqdm(job_list):
+                Parallel(n_jobs=params.threads)(delayed(download_read)(access,
+                                                                    output[0]) for access in job)
         #'ascp -QT -l 300m -P33001 -i ~/.aspera/connect/etc/asperaweb_id_dsa.openssh era-fasp@fasp.sra.ebi.ac.uk:vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz {output}' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_1.fastq.gz
 
 # build gene JSONS from GFF and sequence files
@@ -304,8 +313,11 @@ rule extract_genes:
         threads=config['n_cpu'],
         index_name=config['index_sequences']['elasticSearchIndex'],
         run_type=config["run_type"]
-    shell:
-       'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.assemblyStatDir}/isolateAssemblyAttributes.json -k {input.assemblyStatDir}/indexIsolatePairs.json -i {params.index} -o {output} --threads {params.threads} --index-name {params.index_name} --biosampleJSON {input.assemblyStatDir}/biosampleIsolatePairs.json --prev-dir previous_run --run-type {params.run_type}'
+    run:
+        if os.path.exists("extracted_genes2"):
+            shell("mkdir {output} && cp extracted_genes2/* {output}")
+        else:
+            shell('python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -j {input.assemblyStatDir}/isolateAssemblyAttributes.json -k {input.assemblyStatDir}/indexIsolatePairs.json -i {params.index} -o {output} --threads {params.threads} --index-name {params.index_name} --biosampleJSON {input.assemblyStatDir}/biosampleIsolatePairs.json --prev-dir previous_run --run-type {params.run_type}')
 
 # generate mafft alignments for panaroo output
 rule mafft_align:
@@ -317,8 +329,11 @@ rule mafft_align:
         threads=config['n_cpu']
     output:
         directory("aligned_gene_sequences")
-    shell:
-        "python generate_alignments-runner.py --graph-dir {input.graphDir} --extracted-genes {input.extracted_genes} --output-dir {output} --threads {params.threads}"
+    run:
+        if not os.path.exists("aligned_gene_sequences2"):
+            shell("python generate_alignments-runner.py --graph-dir {input.graphDir} --extracted-genes {input.extracted_genes} --output-dir {output} --threads {params.threads}")
+        else:
+            shell("mkdir {output} && cp aligned_gene_sequences2/* {output}")
 
 # append isolate attributes to elasticsearch index
 rule index_isolate_attributes:
@@ -345,8 +360,9 @@ rule merge_runs:
         threads=config['n_cpu']
     output:
         touch("merge_runs.done")
-    shell:
-        'python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --graph-dir {input.graphDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --accessionFile {input.currentRunAccessions} --previous-run previous_run --threads {params.threads}'
+    run:
+        if not os.path.exists("aligned_gene_sequences"):
+            shell('python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --graph-dir {input.graphDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --accessionFile {input.currentRunAccessions} --previous-run previous_run --threads {params.threads}')
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_gene_sequences:
@@ -362,9 +378,9 @@ rule index_gene_sequences:
         elasticIndex=config['index_sequences']['elasticSearchIndex'],
         index_genes=config["index_genes"]
     run:
-        if index_genes == "True":
-            shell('python index_gene_features-runner.py -t {params.index_type} -i previous_run/extracted_genes -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads} --elastic-index')
-        if index_genes == "False":
+        if params.index_genes == True:
+            shell('python index_gene_features-runner.py -t {params.index_type} -i previous_run/extracted_genes -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads} --elastic-index --index {params.elasticIndex}')
+        if params.index_genes == False:
             shell('python index_gene_features-runner.py -t {params.index_type} -i previous_run/extracted_genes -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads}')
 
 # build COBS index of gene sequences from the output of extract_genes
@@ -385,7 +401,7 @@ rule run_pipeline:
     input:
         ncbiAssemblyStatDir=rules.extract_assembly_stats.output,
         extractedGeneMetadata=rules.extract_genes.output,
-        panarooOutput="panaroo_output",
+        panarooOutput=rules.run_panaroo.output,
         mergeRuns=rules.merge_runs.output,
         reformattedAnnotations=rules.reformat_annotations.output,
         unzippedAnnotations=rules.unzip_annotations.output,
