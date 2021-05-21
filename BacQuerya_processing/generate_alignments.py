@@ -21,6 +21,12 @@ def get_options():
                         required=True,
                         help="directory of Panaroo graph",
                         type=str)
+    io_opts.add_argument("-e",
+                        "--extracted-genes",
+                        dest="extracted_genes",
+                        required=True,
+                        help="directory output by extract_genes.py for current run",
+                        type=str)
     io_opts.add_argument("-o",
                         "--output-dir",
                         dest="output_dir",
@@ -63,7 +69,7 @@ def main():
         os.mkdir(raw_files)
     gene_data = pd.read_csv(os.path.join(args.graph_dir, "gene_data.csv"))
     # import panarooPairs file as there is often an error due to filenames being too long
-    with open(os.path.join(os.path.dirname(args.graph_dir), "extracted_genes", "panarooPairs.json"), "r") as jsonFile:
+    with open(os.path.join(args.extracted_genes, "panarooPairs.json"), "r") as jsonFile:
         pairString = jsonFile.read()
     pairs = json.loads(pairString)
     # convert gene data file to dict to improve efficiency

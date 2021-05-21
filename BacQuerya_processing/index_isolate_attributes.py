@@ -10,7 +10,7 @@ import os
 import sys
 from tqdm import tqdm
 
-from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_API_ID, ELASTIC_API_KEY
+from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_ISOLATE_API_ID, ELASTIC_ISOLATE_API_KEY
 
 def get_options():
 
@@ -54,7 +54,7 @@ def main():
     if not os.path.exists(args.feature_file):
         raise AttributeError("Extract genes output is missing!")
     client = Elasticsearch([ELASTIC_API_URL],
-                        api_key=(ELASTIC_API_ID, ELASTIC_API_KEY))
+                        api_key=(ELASTIC_ISOLATE_API_ID, ELASTIC_ISOLATE_API_KEY))
     if client.ping():
         sys.stderr.write('\nConnected to ES client\n')
     else:

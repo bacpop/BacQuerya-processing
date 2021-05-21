@@ -90,8 +90,7 @@ def reverse_complement(dna):
     return reversed
 
 def reformat_existing_annotations(stored_annotation,
-                                  stored_genome,
-                                  unnamed_no):
+                                  stored_genome):
     """Reformat existing annotations for compatibility with panaroo"""
     all_region_names = []
     all_region_annotations = []
@@ -112,9 +111,9 @@ def reformat_existing_annotations(stored_annotation,
             # process_pokka input only looks for CDSs and returns duplicate error when the exon is split
             if split[2] == 'CDS' and (((end - start) + 1) % 3) == 0:
                 # add name for consistency if gene is unnamed
-                if not ";gene=" in split[8]:
-                    gene_list[gene_elem] = gene_list[gene_elem] + ";gene=UNNAMED_" + str(unnamed_no) + ";"
-                    unnamed_no += 1
+                #if not ";gene=" in split[8]:
+                   # gene_list[gene_elem] = gene_list[gene_elem] + ";gene=UNNAMED_" + str(unnamed_no) + ";"
+                   # unnamed_no += 1
                 genes.append(gene_list[gene_elem])
         # ensure gene ids are unique
         Ids= []
@@ -153,7 +152,7 @@ def reformat_existing_annotations(stored_annotation,
             continue
         cleaned_annotation = "\n".join(str(n) for n in output_cds)
         all_region_annotations.append(cleaned_annotation)
-    return all_region_names, all_region_annotations, unnamed_no
+    return all_region_names, all_region_annotations
 
 def reformat_predicted_annotations(predicted_annotations, pred_no):
     """Extract region annotation information for prodigal-predicted annotations"""
@@ -196,13 +195,13 @@ def merge_all_annotations(all_region_names,
                 position_tuple = (int(predicted_split[3]), int(predicted_split[4]))
                 if not position_tuple in positions:
                     annotations_to_add.append(predicted_line)
-            merged_annotation = region_annotation.splitlines() + annotations_to_add
+            merged_annotation = region_annotation.splitlines() #+ annotations_to_add
             predicted_regions_merged.append(region_label)
             all_merged_annotations += merged_annotation
     # adds predicted annotations for regions that don't already have existing annotations
-    for predicted_region_label in range(len(predicted_region_names)):
-        if not predicted_region_names[predicted_region_label] in predicted_regions_merged:
-            all_merged_annotations += all_predicted_annotations[predicted_region_label].splitlines()
+   # for predicted_region_label in range(len(predicted_region_names)):
+      #  if not predicted_region_names[predicted_region_label] in predicted_regions_merged:
+         #   all_merged_annotations += all_predicted_annotations[predicted_region_label].splitlines()
     return all_region_names, all_merged_annotations
 
 def concatenate_inputs(annotation_file,
@@ -217,7 +216,6 @@ def concatenate_inputs(annotation_file,
     # index used to add names to unnamed genes
     with open(index_file, "r") as indexFile:
         indexNoDict = json.loads(indexFile.read())
-    unnamed_no = int(indexNoDict["unnamedIndexNo"])
     pred_no = int(indexNoDict["predictedIndexNo"])
     with open(annotation_file, "r") as a:
         stored_annotation = a.read()
@@ -234,9 +232,8 @@ def concatenate_inputs(annotation_file,
     # split annotation and genome into regions
     stored_genome = stored_genome.split('>')[1:]
     stored_annotation = stored_annotation.split("##sequence-region ")[1:]
-    all_region_names, all_region_annotations, unnamed_no = reformat_existing_annotations(stored_annotation,
-                                                                                         stored_genome,
-                                                                                         unnamed_no)
+    all_region_names, all_region_annotations = reformat_existing_annotations(stored_annotation,
+                                                                             stored_genome)
     if add_predicted:
         # if predicted annotations exist, reformat them for compatibility
         predicted_region_names, all_predicted_annotations, pred_no = reformat_predicted_annotations(predicted_annotations, pred_no)
@@ -251,7 +248,6 @@ def concatenate_inputs(annotation_file,
     with open(filename_cleaned,'w') as o:
         o.write(annotated_file)
     # update cog index number for subsequent runs
-    indexNoDict["unnamedIndexNo"] = unnamed_no
     indexNoDict["predictedIndexNo"] = pred_no
     with open(index_file, "w") as indexFile:
         indexFile.write(json.dumps(indexNoDict))

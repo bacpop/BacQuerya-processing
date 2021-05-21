@@ -15,7 +15,7 @@ import sys
 from tqdm import tqdm
 import tempfile
 
-from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_API_ID, ELASTIC_API_KEY
+from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY
 
 def get_options():
 
@@ -95,26 +95,18 @@ def elasticsearch_isolates(allIsolatesJson,
                            index_name):
     # rate of indexing decreases substantially after about 1500 items
     partioned_items = [
-        allIsolatesJson[i:i + 1500] for i in range(0, len(allIsolatesJson), 1500)
+        list(allIsolatesJson.keys())[i:i + 1500] for i in range(0, len(allIsolatesJson.keys()), 1500)
         ]
     sys.stderr.write('\nIndexing CDS features\n')
-    for item in tqdm(partioned_items):
+    for keys in tqdm(partioned_items):
         client = Elasticsearch([ELASTIC_API_URL],
-                                api_key=(ELASTIC_API_ID, ELASTIC_API_KEY))
+                                api_key=(ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY))
         # iterate through features
-        for line in tqdm(item):
-            if "gene_index" in line.keys():
-                client = Elasticsearch([ELASTIC_API_URL],
-                            api_key=(ELASTIC_API_ID, ELASTIC_API_KEY))
-                response = client.index(index = index_name,
-                                        id = line["gene_index"],
-                                        body = line,
-                                        request_timeout=30)
-        #if "featureIndex" in line.keys():
-           # response = client.index(index = index_name,
-                                  #  id = line["featureIndex"],
-                                  #  body = line,
-                                  #  request_timeout=30)
+        for line in tqdm(keys):
+            response = client.index(index = index_name,
+                                    id = int(line),
+                                    body = allIsolatesJson[line],
+                                    request_timeout=30)
 
 def write_gene_files(gene_dict, temp_dir):
     """Write gene sequences to individual files with index as filename"""
@@ -166,7 +158,7 @@ def main():
         representative_sequences = []
         sys.stderr.write('\nWriting gene-specific files for COBS indexing\n')
         # need to apply same constraints as those in extract_genes.py
-        for node in tqdm(G._node):
+        for node in G._node:
             y = G._node[node]
             gene_name = y["name"]
             splitNames = gene_name.split("~~~")

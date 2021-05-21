@@ -77,6 +77,17 @@ def get_options():
                         help="number of threads for extracting features",
                         default=1,
                         type=int)
+    io_opts.add_argument("--GPS",
+                        dest="GPS",
+                        required=True,
+                        help="if we are indexing GPS data or not",
+                        type=bool)
+    io_opts.add_argument("--GPS-metdata",
+                        dest="GPS_metadataJSON",
+                        required=False,
+                        help="JSON file of GPS metadata output by scripts/GPS_extract_supplementary_metadata.py",
+                        default=None,
+                        type=str)
     args = parser.parse_args()
     return (args)
 
@@ -122,7 +133,9 @@ def calculate_assembly_stats(genomeFile):
     return contig_stats, scaffold_stats
 
 def assembly_to_JSON(assigned_index,
-                     genome_dir):
+                     genome_dir,
+                     GPS,
+                     GPS_metadataJSON):
     """Use assembly stats to extract information for elasticsearch indexing"""
     index_no = assigned_index['isolate_index']
     assembly_file = assigned_index['assembly file']
@@ -147,6 +160,10 @@ def assembly_to_JSON(assigned_index,
             assembly_dict.update(feature_dict)
         except AttributeError:
             pass
+    if GPS:
+        for accession, supplement in GPS_metadataJSON.items():
+            if supplement["Lane_Id"] == assembly_dict["isolateNameUnderscore"]:
+                assembly_dict.update(supplement)
     return assembly_dict
 
 def main():
@@ -178,6 +195,12 @@ def main():
         index_no += 1
         indexed_assemblies.append(assigned_index)
         indexedIsolateDict.update({isol_label: index_no})
+    # import the GPS metadata JSON if needed
+    if args.GPS:
+        with open(args.GPS_metadataJSON, "r") as metaFile:
+           GPS_metadataJSON = json.loads(metaFile.read())
+    else:
+        GPS_metadataJSON = None
     sys.stderr.write('\nConverting assembly stat files to JSON\n')
     job_list = [
         indexed_assemblies[i:i + args.n_cpu] for i in range(0, len(indexed_assemblies), args.n_cpu)
@@ -186,7 +209,9 @@ def main():
     all_features = []
     for job in tqdm(job_list):
         features = Parallel(n_jobs=args.n_cpu)(delayed(assembly_to_JSON)(assem,
-                                                                         args.genomes) for assem in job)
+                                                                         args.genomes,
+                                                                         args.GPS,
+                                                                         GPS_metadataJSON) for assem in job)
         all_features += features
     # get label biosample pairs for isolate URL
     sys.stderr.write('\nWriting label : BioSample pairs and extracting BioSample metadata\n')

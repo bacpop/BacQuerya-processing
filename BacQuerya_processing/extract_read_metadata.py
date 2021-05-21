@@ -72,6 +72,17 @@ def get_options():
                         help="maximum number of files to retrieve",
                         default=10000,
                         type=int)
+    io_opts.add_argument("--GPS",
+                        dest="GPS",
+                        required=True,
+                        help="if we are indexing GPS data or not",
+                        type=bool)
+    io_opts.add_argument("--GPS-metdata",
+                        dest="GPS_metadataJSON",
+                        required=False,
+                        help="JSON file of GPS metadata output by scripts/GPS_extract_supplementary_metadata.py",
+                        default=None,
+                        type=str)
     args = parser.parse_args()
     return (args)
 
@@ -106,65 +117,86 @@ def download_SRA_metadata(cleaned_accession,
     return failed_accessions
 
 def download_ENA_metadata(accession_dict,
-                          output_dir):
+                          output_dir,
+                          GPS,
+                          GPS_metadataJSON):
     cleaned_accession = accession_dict["input_accession"]
     index_no = accession_dict["isolate_index"]
     apiURL = "https://www.ebi.ac.uk/ena/browser/api/xml/" + cleaned_accession
     urlResponse = requests.get(apiURL)
     accession_metadata = dict(xmltodict.parse(urlResponse.text))
-    #try:
-    if "RUN_SET" in accession_metadata.keys():
-        # we're looking at the run accession,, need to extract the read accession
-        temp_metadata = accession_metadata["RUN_SET"]["RUN"]
-        run_accession = cleaned_accession
-        for elem in temp_metadata["RUN_LINKS"]["RUN_LINK"]:
-            if elem["XREF_LINK"]["DB"] == "ENA-SAMPLE":
-                read_accession = elem["XREF_LINK"]["ID"]
-        apiURL = "https://www.ebi.ac.uk/ena/browser/api/xml/" + read_accession
-        urlResponse = requests.get(apiURL)
-        accession_metadata = dict(xmltodict.parse(urlResponse.text))
-    elif "SAMPLE_SET" in accession_metadata.keys():
-        cleaned_accession = cleaned_accession
-        run_accession = ""
-    accession_metadata = accession_metadata["SAMPLE_SET"]
-    for link in accession_metadata["SAMPLE"]["SAMPLE_LINKS"]["SAMPLE_LINK"]:
-        if link["XREF_LINK"]["DB"] == "ENA-RUN":
-            run_accession = link["XREF_LINK"]["ID"]
-        if link["XREF_LINK"]["DB"] == "ENA-FASTQ-FILES":
-            fastqTable = requests.get(link["XREF_LINK"]["ID"]).text.split("\t")
-            fastqLinks = fastqTable[4].split(";")
-            for fql in range(len(fastqLinks)):
-                fastqLinks[fql] = "https://" + fastqLinks[fql]
-            accession_metadata.update({"ENA-FASTQ-FILES" : fastqLinks})
-    for attribute in accession_metadata["SAMPLE"]["SAMPLE_ATTRIBUTES"]["SAMPLE_ATTRIBUTE"]:
-        if attribute["TAG"] == "ENA-FIRST-PUBLIC":
-            submission_date = attribute["VALUE"]
     try:
-        submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["@namespace"]
+        if "RUN_SET" in accession_metadata.keys():
+            # we're looking at the run accession,, need to extract the read accession
+            temp_metadata = accession_metadata["RUN_SET"]["RUN"]
+            run_accession = cleaned_accession
+            for elem in temp_metadata["RUN_LINKS"]["RUN_LINK"]:
+                if elem["XREF_LINK"]["DB"] == "ENA-SAMPLE":
+                    read_accession = elem["XREF_LINK"]["ID"]
+            apiURL = "https://www.ebi.ac.uk/ena/browser/api/xml/" + read_accession
+            urlResponse = requests.get(apiURL)
+            accession_metadata = dict(xmltodict.parse(urlResponse.text))
+        elif "SAMPLE_SET" in accession_metadata.keys():
+            cleaned_accession = cleaned_accession
+            run_accession = ""
+        elif "ErrorDetails" in accession_metadata.keys():
+            with open("ENA_READS_SUPPRESSED.txt", "a") as suppressed:
+                suppressed.write(cleaned_accession + "\n")
+            return None
+        accession_metadata = accession_metadata["SAMPLE_SET"]
+        for link in accession_metadata["SAMPLE"]["SAMPLE_LINKS"]["SAMPLE_LINK"]:
+            if link["XREF_LINK"]["DB"] == "ENA-RUN":
+                run_accession = link["XREF_LINK"]["ID"]
+            if link["XREF_LINK"]["DB"] == "ENA-FASTQ-FILES":
+                fastqTable = requests.get(link["XREF_LINK"]["ID"]).text.split("\t")
+                fastqLinks = fastqTable[4].split(";")
+                for fql in range(len(fastqLinks)):
+                    fastqLinks[fql] = "https://" + fastqLinks[fql]
+                accession_metadata.update({"ENA-FASTQ-FILES" : fastqLinks})
+        for attribute in accession_metadata["SAMPLE"]["SAMPLE_ATTRIBUTES"]["SAMPLE_ATTRIBUTE"]:
+            if attribute["TAG"] == "ENA-FIRST-PUBLIC":
+                submission_date = attribute["VALUE"]
+        try:
+            submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["@namespace"]
+        except:
+            submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["namespace"]
+        # if we are indexing the GPS data, we need to set the isolate name as the lane_id
+        if GPS:
+            try:
+                GPS_metadata = GPS_metadataJSON[run_accession]
+            except KeyError:
+                for accession, supplement in GPS_metadataJSON.items():
+                    if "ERS" in supplement.keys() and supplement["ERS"] == cleaned_accession:
+                        GPS_metadata = supplement
+            isolateName = GPS_metadata["Lane_Id"]
+        else:
+            isolateName = cleaned_accession
+        metadata = {"isolateName" : isolateName,
+                    "accession" : cleaned_accession,
+                    "read_accession" : cleaned_accession,
+                    "isolate_index" : index_no,
+                    "Submitter" : submitter,
+                    "Genome_representation" : "reads",
+                    "SubmissionDate" : submission_date,
+                    "Organism_name" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["SCIENTIFIC_NAME"],
+                    "Taxid" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["TAXON_ID"],
+                    "BioSample" : accession_metadata["SAMPLE"]["IDENTIFIERS"]["EXTERNAL_ID"]["#text"],
+                    "source" : "ENA",
+                    "sequenceURL" : accession_metadata["ENA-FASTQ-FILES"],
+                    "allAttributes" : json.dumps(accession_metadata["SAMPLE"])}
+        if GPS:
+            metadata.update(GPS_metadata)
+        # output isolate: index pairs
+        indexIsolatePair = {isolateName: index_no}
+        if not run_accession == "":
+            metadata.update({"run_accession" : run_accession})
+        metadata_json = json.dumps(metadata).replace("@", "")
+        return [fastqLinks, metadata, indexIsolatePair]
     except:
-        submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["namespace"]
-    metadata = {"isolateName" : cleaned_accession,
-                "accession" : cleaned_accession,
-                "read_accession" : cleaned_accession,
-                "run_accession" : run_accession,
-                "isolate_index" : index_no,
-                "Submitter" : submitter,
-                "Genome_representation" : "reads",
-                "Date" : submission_date,
-                "Organism_name" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["SCIENTIFIC_NAME"],
-                "Taxid" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["TAXON_ID"],
-                "BioSample" : accession_metadata["SAMPLE"]["IDENTIFIERS"]["EXTERNAL_ID"]["#text"],
-                "source" : "ENA",
-                "sequenceURL" : accession_metadata["ENA-FASTQ-FILES"],
-                "allAttributes" : json.dumps(accession_metadata["SAMPLE"])}
-    # output isolate: index pairs
-    indexIsolatePair = {cleaned_accession: index_no}
-    if not run_accession == "":
-        metadata.update({"run_accession" : run_accession})
-    metadata_json = json.dumps(metadata).replace("@", "")
-    return [fastqLinks, metadata, indexIsolatePair]
-    #except:
-       #sys.stderr.write("Request failed for the following accession: " + cleaned_accession)
+        sys.stderr.write("Request failed for the following accession: " + cleaned_accession)
+        with open("ENA_READS_ERROR.txt", "a") as failed:
+            failed.write(cleaned_accession + "\n")
+        return None
 
 def main():
     """Main function. Parses command line args and calls functions."""
@@ -200,11 +232,19 @@ def main():
     job_list = [
         indexed_accessions[i:i + args.n_cpu] for i in range(0, len(indexed_accessions), args.n_cpu)
     ]
+    # import the GPS metadata JSON if needed
+    if args.GPS:
+        with open(args.GPS_metadataJSON, "r") as metaFile:
+           GPS_metadataJSON = json.loads(metaFile.read())
+    else:
+        GPS_metadataJSON = None
     if args.read_source == "ena":
         access_data = []
         for job in tqdm(job_list):
             access_data +=  Parallel(n_jobs=args.n_cpu)(delayed(download_ENA_metadata)(access,
-                                                                                       args.output_dir) for access in job)
+                                                                                       args.output_dir,
+                                                                                       args.GPS,
+                                                                                       GPS_metadataJSON) for access in job)
         #access_data = [link for row in access_data for link in row]
         fastq_links = []
         metadata = []
@@ -214,6 +254,7 @@ def main():
             indexIsolateDict.update(line[2])
         # get BioSample Metadata
         sys.stderr.write('\nDownload BioSample metadata\n')
+        #### need to get assembly accessions too if they are present for the GPS data
         for metadata_line in tqdm(metadata):
             biosample_metadata = get_biosample_metadata(metadata_line["BioSample"], args.email)
             metadata_line.update(biosample_metadata)

@@ -1,12 +1,23 @@
 # Location of BacQuerya_processing repository relative to the Snakefile
-BactQuerya_location: .
+BacQuerya_location: .
+
+# whether this run is building the reference information for a species ("reference") or processing new isolates ("query")
+# unless you are adding a new species to the indices, this has to be "query"
+run_type: reference
+
+# needed for a "reference" run. Tells snakemake to add gene information merged together from all runs to the elastic gene index
+index_genes: False
 
 # multiprocessing option
-n_cpu: 4
+n_cpu: 3
+
+# if this is to index the GPS data
+GPS: False
+GPS_metadataJSON: GPS_metadata.json
 
 # options for extract_entrez_information
 extract_entrez_information:
-  accession_file: NCBI_requested_accessions.txt
+  accession_file: GPS_assembly_biosamples.txt
   email: empty
   assembly: assembly-stats
   gff: annotation
@@ -14,7 +25,7 @@ extract_entrez_information:
 
 # options to extract sequence reads
 extract_read_metadata:
-  accession_file:  EBI_requested_accessions.txt
+  accession_file:  GPS_read_ERS.txt
 
 # options for single_meryl_dbs
 single_meryl_dbs:
