@@ -24,9 +24,12 @@ def main():
     retieved_files = glob.glob(os.path.join(args.input_dir, "*"))
     for file in retieved_files:
         dirname = os.path.dirname(file)
-        print(dirname)
         newFilename = ".".join(file.split(".")[1:]).split("_")[1:]
         newFilename = os.path.join(dirname, "_".join(newFilename[:2]) + "#" + newFilename[2])
+        if "_additionalAssemblyStats.txt" in file:
+            newFilename += "_additionalAssemblyStats.txt"
+        if "_assembly_stats.txt" in file:
+            newFilename += "_assembly_stats.txt"
         os.rename(file, newFilename)
     sys.exit(0)
 

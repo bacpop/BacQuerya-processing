@@ -17,8 +17,11 @@ rule retrieve_assembly_stats:
         attribute=config['extract_entrez_information']['assembly'],
         threads=config['n_cpu'],
         GPS=config['GPS']
-    shell:
-       'python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}'
+    run:
+        shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
+        if params.GPS == True:
+            shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
+
 
 # retrieve isolate-GFFS
 rule retrieve_annotations:
@@ -31,8 +34,10 @@ rule retrieve_annotations:
         attribute=config['extract_entrez_information']['gff'],
         threads=config['n_cpu'],
         GPS=config['GPS']
-    shell:
-       'python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}'
+    run:
+       shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
+       if params.GPS == True:
+            shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
 
 # gunzip annotation files
 rule unzip_annotations:
@@ -54,8 +59,11 @@ rule retrieve_genomes:
         attribute=config['extract_entrez_information']['genome'],
         threads=config['n_cpu'],
         GPS=config['GPS']
-    shell:
-       'python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}'
+    run:
+        shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
+        if params.GPS == True:
+            shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
+
 
 # retrieve raw reads using SRA toolkit
 rule retrieve_sra_reads:

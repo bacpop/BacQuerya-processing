@@ -72,6 +72,17 @@ def get_options():
                         help="maximum number of files to retrieve",
                         default=10000,
                         type=int)
+    io_opts.add_argument("--GPS",
+                        dest="GPS",
+                        required=True,
+                        help="if we are indexing GPS data or not",
+                        type=bool)
+    io_opts.add_argument("--GPS-metdata",
+                        dest="GPS_metadataJSON",
+                        required=False,
+                        help="JSON file of GPS metadata output by scripts/GPS_extract_supplementary_metadata.py",
+                        default=None,
+                        type=str)
     args = parser.parse_args()
     return (args)
 
@@ -106,7 +117,9 @@ def download_SRA_metadata(cleaned_accession,
     return failed_accessions
 
 def download_ENA_metadata(accession_dict,
-                          output_dir):
+                          output_dir,
+                          GPS,
+                          GPS_metadataJSON):
     cleaned_accession = accession_dict["input_accession"]
     index_no = accession_dict["isolate_index"]
     apiURL = "https://www.ebi.ac.uk/ena/browser/api/xml/" + cleaned_accession
@@ -126,6 +139,10 @@ def download_ENA_metadata(accession_dict,
     elif "SAMPLE_SET" in accession_metadata.keys():
         cleaned_accession = cleaned_accession
         run_accession = ""
+    elif "ErrorDetails" in accession_metadata.keys():
+        with open("ENA_suppressed_reads.txt", "a") as suppressed:
+            suppressed.write(cleaned_accession + "\n")
+        return None
     accession_metadata = accession_metadata["SAMPLE_SET"]
     for link in accession_metadata["SAMPLE"]["SAMPLE_LINKS"]["SAMPLE_LINK"]:
         if link["XREF_LINK"]["DB"] == "ENA-RUN":
@@ -143,7 +160,13 @@ def download_ENA_metadata(accession_dict,
         submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["@namespace"]
     except:
         submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["namespace"]
-    metadata = {"isolateName" : cleaned_accession,
+    # if we are indexing the GPS data, we need to set the isolate name as the lane_id
+    if GPS:
+        print(run_accession)
+        isolateName = ""
+    else:
+        isolateName = cleaned_accession
+    metadata = {"isolateName" : isolateName,
                 "accession" : cleaned_accession,
                 "read_accession" : cleaned_accession,
                 "run_accession" : run_accession,
@@ -158,7 +181,7 @@ def download_ENA_metadata(accession_dict,
                 "sequenceURL" : accession_metadata["ENA-FASTQ-FILES"],
                 "allAttributes" : json.dumps(accession_metadata["SAMPLE"])}
     # output isolate: index pairs
-    indexIsolatePair = {cleaned_accession: index_no}
+    indexIsolatePair = {isolateName: index_no}
     if not run_accession == "":
         metadata.update({"run_accession" : run_accession})
     metadata_json = json.dumps(metadata).replace("@", "")
@@ -200,11 +223,19 @@ def main():
     job_list = [
         indexed_accessions[i:i + args.n_cpu] for i in range(0, len(indexed_accessions), args.n_cpu)
     ]
+
+    if args.GPS:
+        with open(args.GPS_metadataJSON, "r") as metaFile:
+           GPS_metadataJSON = json.loads(metaFile.read())
+    else:
+        GPS_metadataJSON = None
     if args.read_source == "ena":
         access_data = []
         for job in tqdm(job_list):
             access_data +=  Parallel(n_jobs=args.n_cpu)(delayed(download_ENA_metadata)(access,
-                                                                                       args.output_dir) for access in job)
+                                                                                       args.output_dir,
+                                                                                       args.GPS,
+                                                                                       GPS_metadataJSON) for access in job)
         #access_data = [link for row in access_data for link in row]
         fastq_links = []
         metadata = []
@@ -214,6 +245,7 @@ def main():
             indexIsolateDict.update(line[2])
         # get BioSample Metadata
         sys.stderr.write('\nDownload BioSample metadata\n')
+        #### need to get assembly accessions too if they are present for the GPS data
         for metadata_line in tqdm(metadata):
             biosample_metadata = get_biosample_metadata(metadata_line["BioSample"], args.email)
             metadata_line.update(biosample_metadata)
