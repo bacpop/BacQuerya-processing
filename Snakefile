@@ -263,9 +263,11 @@ rule extract_assembly_stats:
     params:
         index=config['extract_assembly_stats']['index_file'],
         threads=config['n_cpu'],
-        email=config['extract_entrez_information']['email']
+        email=config['extract_entrez_information']['email'],
+        GPS=config["GPS"],
+        GPS_JSON=config["GPS_metadataJSON"]
     shell:
-       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output}/isolateAssemblyAttributes.json -k {output}/indexIsolatePairs.json -b {output}/biosampleIsolatePairs.json -e {params.email} --previous-run previous_run --threads {params.threads}'
+       'python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output}/isolateAssemblyAttributes.json -k {output}/indexIsolatePairs.json -b {output}/biosampleIsolatePairs.json -e {params.email} --previous-run previous_run --threads {params.threads} --GPS {params.GPS} --GPS-metdata {params.GPS_JSON}'
 
 # retrieve ena read metadata
 rule retrieve_ena_read_metadata:
@@ -280,9 +282,10 @@ rule retrieve_ena_read_metadata:
         index=config['extract_assembly_stats']['index_file'],
         email=config['extract_entrez_information']['email'],
         threads=config['n_cpu'],
-        GPS=config["GPS"]
+        GPS=config["GPS"],
+        GPS_JSON=config["GPS_metadataJSON"]
     shell:
-       'python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --GPS {params.GPS}'
+       'python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --GPS {params.GPS} --GPS-metdata {params.GPS_JSON}'
 
 # retrieve raw reads from ENA
 rule retrieve_ena_reads:

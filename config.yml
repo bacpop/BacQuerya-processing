@@ -13,6 +13,7 @@ n_cpu: 3
 
 # if this is to index the GPS data
 GPS: False
+GPS_metadataJSON: GPS_metadata.json
 
 # options for extract_entrez_information
 extract_entrez_information:
