@@ -5,7 +5,7 @@ Append isolate assembly stats to locally hosted elasticsearch index
 """
 from elasticsearch import Elasticsearch
 import json
-import glob
+import math
 import os
 import sys
 from tqdm import tqdm
@@ -74,11 +74,22 @@ def main():
             enaString = f.read()
             enaJSON = json.loads(enaString)
             doc_list += enaJSON["information"]
+    seen_indices = []
     for line in tqdm(doc_list):
         try:
+            seen_indices.append(str(line["isolate_index"]))
+            for attr, value in line.items():
+                if isinstance(value, float):
+                    if math.isnan(value):
+                        line[attr] = "NA"
+            # ensure year and N50 are mapped as integers
+            line["Year"] = int(line["Year"])
+            line["contig_stats"]["N50"] = int(line["contig_stats"]["N50"])
             response = client.index(index = args.index,
                                     id = line["isolate_index"],
                                     body = line)
         except:
             sys.stderr.write('\nIssue indexing isolate: ' + line['isolateName'] + '\n')
+    with open("ISOLATE_SEEN_INDICES.txt", "w") as seen:
+        seen.write("\n".join(seen_indices))
     sys.exit(0)

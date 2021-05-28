@@ -212,6 +212,7 @@ def main():
         for currentFile in current_alignment_files:
             if not currentFile in updated_alignment_files:
                 copy_command = "cp " + currentFile + " " + os.path.join(args.prev_run, "aligned_gene_sequences")
+                subprocess.run(copy_command, check=True, shell=True)
         # genes names with a group prefix change with every run, need to re-align everytime
         sys.stderr.write("\nGenerating MAFFT alignments for unnamed genes\n")
         align_command = "python generate_alignments-runner.py --graph-dir "

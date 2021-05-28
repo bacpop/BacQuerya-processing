@@ -106,13 +106,13 @@ def elasticsearch_isolates(allIsolatesJson,
             response = client.index(index = index_name,
                                     id = int(line),
                                     body = allIsolatesJson[line],
-                                    request_timeout=30)
+                                    request_timeout=60)
 
 def write_gene_files(gene_dict, temp_dir):
     """Write gene sequences to individual files with index as filename"""
-    gene_index = str(gene_dict["gene_index"])
+    document_name = str(gene_dict["consistentNames"])
     gene_sequence = gene_dict["sequence"]
-    with open(os.path.join(temp_dir, gene_index + ".txt"), "w") as g:
+    with open(os.path.join(temp_dir, document_name + ".txt"), "w") as g:
         g.write(gene_sequence)
 
 def write_assembly_files(assembly_file, temp_dir):
@@ -167,9 +167,9 @@ def main():
                 dna = y["dna"].split(";")
                 for key in pairs.keys():
                     if pairs[key]["panarooNames"] == y["name"]:
-                        gene_index = key
+                        document_name = pairs[key]["consistentNames"]
                 for seq in range(len(dna)):
-                    representative_sequences.append({"gene_index": str(gene_index) + "_v" + str(seq), "sequence": dna[seq]})
+                    representative_sequences.append({"consistentNames": str(document_name) + "_v" + str(seq), "sequence": dna[seq]})
         job_list = [
             representative_sequences[i:i + args.n_cpu] for i in range(0, len(representative_sequences), args.n_cpu)
         ]

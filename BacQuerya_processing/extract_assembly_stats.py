@@ -44,21 +44,9 @@ def get_options():
                         type=str)
     io_opts.add_argument("-o",
                         "--output",
-                        dest="output_file",
+                        dest="output_dir",
                         required=True,
                         help="output file for json of isolates",
-                        type=str)
-    io_opts.add_argument("-k",
-                        "--isolateKeys",
-                        dest="isolateKeys",
-                        required=True,
-                        help="output json for isolate name:index",
-                        type=str)
-    io_opts.add_argument("-b",
-                        "--biosampleKeys",
-                        dest="biosampleKeys",
-                        required=True,
-                        help="output json for isolate name:biosample",
                         type=str)
     io_opts.add_argument("-e",
                         "--email",
@@ -99,7 +87,11 @@ def get_biosample_metadata(biosample_accession,
     handle = Entrez.read(Entrez.esearch(db="biosample", term=biosample_accession, retmax = 10))
     assembly_ids = handle['IdList']
     esummary_handle = Entrez.esummary(db="biosample", id=assembly_ids[0], report="full")
-    esummary_record = Entrez.read(esummary_handle, validate = False)
+    try:
+        esummary_record = Entrez.read(esummary_handle, validate = False)
+    except ValueError:
+        sys.stderr.write("\nError with:" + biosample_accession + "\n")
+        return None
     biosample_identifiers = esummary_record["DocumentSummarySet"]["DocumentSummary"][0]["Identifiers"]
     biosample_metadata_html = esummary_record["DocumentSummarySet"]["DocumentSummary"][0]["SampleData"]
     biosample_metadata_dict = xmltodict.parse(biosample_metadata_html)
@@ -170,15 +162,18 @@ def main():
     """Main function. Parses command line args and calls functions."""
     args = get_options()
 
-    if not os.path.exists(os.path.dirname(args.output_file)):
-        os.mkdir((os.path.dirname(args.output_file)))
+    output_file = os.path.join(args.output_dir, "isolateAssemblyAttributes.json")
+    biosampleKeys = os.path.join(args.output_dir, "biosampleIsolatePairs.json")
+    isolateKeys = os.path.join(args.output_dir, "indexIsolatePairs.json")
+    if not os.path.exists(os.path.dirname(args.output_dir)):
+        os.mkdir((os.path.dirname(args.output_dir)))
     assembly_reports = glob.glob(args.assemblies + '/*_assembly_stats.txt')
     indexed_assemblies = []
     with open(args.index_file, "r") as indexFile:
         indexNoDict = json.loads(indexFile.read())
     index_no = int(indexNoDict["isolateIndexNo"])
     # if previous isolate_kv pairs exist use that to prevent duplication of isolates in index
-    previousRunFile = os.path.join(args.previous_dir, args.isolateKeys)
+    previousRunFile = os.path.join(args.previous_dir, isolateKeys)
     if os.path.exists(previousRunFile):
         with open(previousRunFile) as prevKeys:
             indexedIsolateDict = json.loads(prevKeys.read())
@@ -218,15 +213,16 @@ def main():
     labelBiosampleDict = {}
     for feat in tqdm(all_features):
         labelBiosampleDict.update({feat["isolateNameUnderscore"] : feat["BioSample"]})
-        biosample_data = get_biosample_metadata(feat["BioSample"], args.email)
-        feat.update(biosample_data)
-    with open(os.path.join(args.output_file), "w") as a:
+        biosample_data = get_biosample_metadata(feat["BioSample"], args.email, None)
+        if biosample_data:
+            feat.update(biosample_data)
+    with open(os.path.join(output_file), "w") as a:
         a.write(json.dumps({"information":all_features}))
     # output isolateName and assigned index k,v pairs
-    with open(args.isolateKeys, "w") as a:
+    with open(isolateKeys, "w") as a:
         a.write(json.dumps(indexedIsolateDict))
     # output isolateName and biosample accession k,v pairs
-    with open(args.biosampleKeys, "w") as b:
+    with open(biosampleKeys, "w") as b:
         b.write(json.dumps(labelBiosampleDict))
     # update isolate index number for subsequent runs
     indexNoDict["isolateIndexNo"] = index_no
