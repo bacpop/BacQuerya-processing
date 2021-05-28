@@ -61,7 +61,7 @@ Predicts genes in all assemblies in an input directory and outputs predicted ann
 * ```output```: Output directory name for predicted annotations. 
 * ```threads```: Number of threads for prediction. 
 
-### 3. eformat_annotations rule:
+### 3. reformat_annotations rule:
 
 Converts publicly available functional annotations in GFF3 format to Prokka format for direct input into Panaroo.
 
