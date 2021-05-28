@@ -28,7 +28,7 @@ Parameters for the automated Snakemake pipeline can be adjusted by modifying the
 
 1. ```retrieve_assembly_stats```, ```retrieve_annotations``` and ```retrieve_genomes``` rules:
 
-Retrieves information of interests from NCBI GenBank by accession ID. 
+Retrieves information of interest from NCBI GenBank by accession ID. 
 
 **Inputs**:
 * ```accession_file```: Filepath of a "\n" separated list of BioSample or assembly accession IDs for asssemblies available through NCBI GenBank or Refseq. 
@@ -56,7 +56,7 @@ Converts publicly available functional annotations in GFF3 format to Prokka form
 
 **Inputs**:
 * ```assembly_directory```: Directory of uncompressed assembly sequences.
-* ```index_file```: Filepath of JSON storing index numbers (Of the form ```{"isolateIndexNo": 0, "geneIndexNo": 0, "predictedIndexNo": 0}```)
+* ```index_file```: Filepath of JSON storing index numbers (Of the form ```{"isolateIndexNo": 0, "geneIndexNo": 0, "predictedIndexNo": 0}```).
 * ```output```: Output directory name for reformatted annotations. 
 * ```threads```: Number of threads for reformatting. 
 * ```annotation_directory```: Directory of uncompressed functional annotations in GFF3 format. If specified, existing annotations are added to the reformatted annotations. 
@@ -64,4 +64,42 @@ Converts publicly available functional annotations in GFF3 format to Prokka form
 
 **Equivalent shell command**:
 ```
-python panaroo_clean_inputs-runner.py -a <annotation_directory> -g <assembly_directory> -p <prodigal_directory> --index-file <index_file> -o {output} --threads <threads>```
+python panaroo_clean_inputs-runner.py -a <annotation_directory> -g <assembly_directory> -p <prodigal_directory> --index-file <index_file> -o {output} --threads <threads>
+```
+
+4. ```run_panaroo``` rule:
+
+Runs panaroo on prokka-formatted functional annotation files. 
+
+**Inputs**:
+* ```input_directory```: Directory of prokka formatted function annotation files.
+* ```output```: Directory for the panaroo outputs. 
+* ```threads```: Number of threads for running panaroo. 
+
+**Equivalent shell command**:
+```
+panaroo -i <input_directory>/*.gff -o <output> --clean-mode sensitive -t <threads>
+```
+
+ 5. ```extract_assembly_stats``` rule:
+
+Generates a JSON file of isolate metadata. 
+
+**Inputs**:
+* ```assembly_stats_directory```: Directory of uncompressed assembly statistics downloaded from NCBI GenBank.
+* ```assembly_directory```: Directory of uncompressed assemblies downloaded from NCBI GenBank.
+* ```index_file```: Filepath of JSON storing index numbers (Of the form ```{"isolateIndexNo": 0, "geneIndexNo": 0, "predictedIndexNo": 0}```).
+* ```output```: Output directory for isolate metadata files. 
+* ```email```: An email address to specify for Entrez programmatic access. 
+* ```threads```: Number of threads for converting asssembly statistics to JSON.
+* ```previous_run```: Directory storing previous snakemake outputs.  
+
+**Outputs**:
+*```isolateAssemblyAttributes.json```: JSON file of isolate metadata. 
+*```biosampleIsolatePairs.json```: JSON file of isolate name key and BioSample accession ID values. 
+*```indexIsolatePairs.json```: JSON file of isolate name key and isolate index number values. 
+
+**Equivalent shell command**:
+```
+python extract_assembly_stats-runner.py -a <assembly_stats_directory> -g <assembly_directory> -i <index_file> -o <output> -e <email> --previous-run previous_run --threads <threads>```
+
