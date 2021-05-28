@@ -24,8 +24,8 @@ Scripts in this repository may be used either with the included snakemake pipeli
 To install BacQuerya-processing from source, run:
 ```
 git clone https://github.com/bacpop/BacQuerya-processing.git
+conda create -n snakemake --file=environment.yml
 conda install snakemake
-conda create --file=environment.yml
 conda activate snakemake
 ```
 
