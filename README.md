@@ -146,7 +146,7 @@ Extracts gene metadata for assemblies from a panaroo output and adds genes per i
 * ```threads```: Number of threads to annotate "query isolates". 
 * ```index_name```: Name of elastic gene metadata index.
 * ```run_type```: Whether this is a "reference" or "query" run (see **reference vs query runs**). 
-• ```update```: Update the input panaroo outputs with the new gene names and annotations. 
+* ```update```: Update the input panaroo outputs with the new gene names and annotations. 
 
 **Equivalent shell command**:
 ```
@@ -167,3 +167,38 @@ Extracts gene metadata for assemblies from a panaroo output and adds genes per i
 ```
 python generate_alignments-runner.py --graph-dir <graph_directory> --extracted-genes <gene_metadata> --output-dir <output> --threads <threads>
 ```
+
+### 10. index_isolate_attributes rule:
+
+Indexes isolate assembly and read metadata in a searchable elastic index. 
+
+**Inputs**:
+* ```isolate_asssembly_metadata```: Filepath of JSON of isolate assembly metadata.
+* ```isolate_read_metadata```: Directory of isolate read metadata output by the ```retrieve_ena_read_metadata``` rule.
+* ```index_name```: Name of elastic isolate metadata index.
+* ```gene_metadata```: Directory output by the ```extract_genes``` rule. Required to ensure genes contained have been added to the isolate assembly metadata.
+
+**Equivalent shell command**:
+```
+python index_isolate_attributes-runner.py -f <isolate_asssembly_metadata> -e <isolate_read_metadata> -i <index_name> -g <gene_metadata>
+```
+
+### 11. index_gene_sequences rule:
+
+Indexes gene metadata in a searchable elastic index. 
+
+**Inputs**:
+* ```gene_metadata```: Directory containing extracted gene metadata. If using the snakemake pipeline, this will be ```previous_run/extracted_genes``` as the metadata for current and previous snakemake runs will have been merged. 
+* ```graph_directory```: Directory of a panaroo graph constructed from the annotations in the ```annotation_directory``` and updated by the ```extract_genes``` rule. If using the snakemake pipeline, this will be ```previous_run/panaroo_output``` as the metadata for current and previous snakemake runs will have been merged. 
+* ```output```: Output directory for the constructed COBS index.
+* ```kmer_length```: K-mer length at which to construct the COBS index (default=31).
+* ```threads```: Number of threads to write fasta files for COBS input.
+* ```index_name```: Name of elastic isolate metadata index.
+* ```elastic-index```: Index genes in elastic gene index. If excluded, only a COBS gene index is constructed.  
+
+**Equivalent shell command**:
+```
+python index_gene_features-runner.py -t gene -i <gene_metadata> -g <graph_directory> -o <output> --kmer-length <kmer_length> --threads <threads> --index  <index_name> [--elastic-index] 
+```
+
+## reference vs query runs
