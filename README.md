@@ -35,7 +35,7 @@ Retrieves information of interest from NCBI GenBank by accession ID.
 * ```attribute```: Retrieve assembly sequences, functional annotations or assembly statistics (specified as ```genomes```, ```annotation``` or ```assembly-stats```).
 * ```email```: An email address to specify for Entrez programmatic access. 
 * ```output```: Output directory name for retrieved attributes. 
-* ```threads```: Number of threads for retrieval. Entrez allows up to 3 queries/second without an API key and 10 queries/second with an API key. To specify an API key, see **Adding secrets**.
+* ```threads```: Number of threads for retrieval. Entrez allows up to 3 queries/second without an API key and 10 queries/second with an API key. To specify an API key, see **Local instances of BacQuerya**.
 
 **Equivalent shell command**:
 ```
@@ -69,7 +69,7 @@ python panaroo_clean_inputs-runner.py -a <annotation_directory> -g <assembly_dir
 
 ### 4. run_panaroo rule:
 
-Runs panaroo [https://github.com/gtonkinhill/panaroo](https://github.com/gtonkinhill/panaroo) on prokka-formatted functional annotation files. 
+Runs panaroo ([https://github.com/gtonkinhill/panaroo](https://github.com/gtonkinhill/panaroo)) on prokka-formatted functional annotation files. 
 
 **Inputs**:
 * ```input_directory```: Directory of prokka formatted function annotation files.
@@ -202,3 +202,47 @@ python index_gene_features-runner.py -t gene -i <gene_metadata> -g <graph_direct
 ```
 
 ## reference vs query runs
+
+Users can choose the ```run_type``` for the BacQuerya Snakemake pipeline as a ```reference``` or ```query``` run with:
+```
+snakemake --cores 1 --config run_type=<run_type>
+```
+This option impacts whether or not the genomic information in the current run is used to update the existing panaroo output of a previous ```reference``` run. If ```reference``` is specified, panaroo is run on the isolates in the current run and this output is merged with the previous output to become the new reference panaroo output. If ```query``` is selected, prokka-formatted functional annotations are integrated into the reference output one by one to identify genes, but the reference panaroo output is **not** updated with the genomic information from these isolates. 
+
+## Local instances of BacQuerya
+
+BacQuerya-processing primarily has been designed to populate the indices for the BacQuerya website but we appreciate our processing and indexing pipeline may have use cases beyond our original intentions. This may include locally hosting indices, allowing users to index and search through sensitive genomic data not currently in the public domain. To do this, we anticipate that a number of scripts will require some customisation depending on the use case and we would be happy to answer any questions you may have on setting up one of these private instances. However, local instances of BacQuerya sourcing publicly available data can be set up relatively easily.
+
+# Locally hosting elastic indices
+
+Elasticsearch is easy to install, free for local installations and interacts with the processing pipeline through the same API as the elastic cloud indices we use with BacQuerya. Elasticsearch is available for download from [https://www.elastic.co/downloads/elasticsearch](https://www.elastic.co/downloads/elasticsearch). Uncompress the download and add the following line to the end of the ```config/elasticsearch.yml``` file within the bundle. 
+```
+http.cors:
+  enabled: true
+  allow-origin: /https?:\/\/localhost(:[0-9]+)?/
+```
+To run Elasticsearch at [http://localhost:9200](http://localhost:9200), enter the bundle directory and start the Elastic instance by running:
+* on windows
+```
+bin\elasticsearch.bat
+```
+* on macOS/Linux
+```
+bin/elasticsearch
+```
+
+# Specifying elastic parameters and secrets
+
+Our Elastic parameters and API keys are not available for public use therefore, to make BacQuerya-procesing communicate with your local elasticsearch instance you must create a ```secrets.py``` file in the ```BacQuerya_processing``` directory and define the following paramters for export:
+
+* ```ELASTIC_API_URL```: The elasticsearch endpoint. This is [http://localhost:9200](http://localhost:9200) for local instances. 
+* ```ELASTIC_ISOLATE_API_ID```: The API ID for an API key with write access for your elastic isolate index. 
+* ```ELASTIC_ISOLATE_API_KEY```: The API key with write access for your elastic isolate index. 
+* ```ELASTIC_GENE_API_ID```: The API ID for an API key with write access for your elastic gene index. 
+* ```ELASTIC_GENE_API_KEY```: The API key with write access for your elastic gene index.
+
+To create API keys for your indices, see [https://www.elastic.co/guide/en/elasticsearch/reference/current/security-api-create-api-key.html](https://www.elastic.co/guide/en/elasticsearch/reference/current/security-api-create-api-key.html). Users may also define an ```ENTREZ_API_KEY``` here to increase the number of possible Entrez queries per second.
+
+# Contributors
+
+BacQuerya, BacQuerya-api and BacQuerya-processing were developed by Daniel Anderson and John Lees.
