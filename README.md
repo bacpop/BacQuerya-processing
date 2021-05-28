@@ -233,7 +233,7 @@ bin/elasticsearch
 
 # Specifying elastic parameters and secrets
 
-Our Elastic parameters and API keys are not available for public use therefore, to make BacQuerya-processing communicate with your local elasticsearch instance you must create a ```secrets.py``` file in the ```BacQuerya_processing``` directory and define the following paramters for export:
+Our Elastic parameters and API keys are not available for public use therefore, to make BacQuerya-processing communicate with your local elasticsearch instance you must create a ```secrets.py``` file in the ```BacQuerya_processing``` directory and define the following parameters for export:
 
 * ```ELASTIC_API_URL```: The elasticsearch endpoint. This is [http://localhost:9200](http://localhost:9200) for local instances. 
 * ```ELASTIC_ISOLATE_API_ID```: The API ID for an API key with write access for your elastic isolate index. 
