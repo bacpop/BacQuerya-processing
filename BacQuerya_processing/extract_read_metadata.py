@@ -83,6 +83,12 @@ def get_options():
                         help="JSON file of GPS metadata output by scripts/GPS_extract_supplementary_metadata.py",
                         default=None,
                         type=str)
+    io_opts.add_argument("--assembly-url",
+                        dest="assemblyURLs",
+                        required=False,
+                        help="JSON file of biosample assembly pairs output by scripts/GPS_661kassembly_links.py",
+                        default=None,
+                        type=str)
     args = parser.parse_args()
     return (args)
 
@@ -119,13 +125,14 @@ def download_SRA_metadata(cleaned_accession,
 def download_ENA_metadata(accession_dict,
                           output_dir,
                           GPS,
-                          GPS_metadataJSON):
+                          GPS_metadataJSON,
+                          assemblyURLs):
     cleaned_accession = accession_dict["input_accession"]
     index_no = accession_dict["isolate_index"]
     apiURL = "https://www.ebi.ac.uk/ena/browser/api/xml/" + cleaned_accession
-    urlResponse = requests.get(apiURL)
-    accession_metadata = dict(xmltodict.parse(urlResponse.text))
     try:
+        urlResponse = requests.get(apiURL)
+        accession_metadata = dict(xmltodict.parse(urlResponse.text))
         if "RUN_SET" in accession_metadata.keys():
             # we're looking at the run accession,, need to extract the read accession
             temp_metadata = accession_metadata["RUN_SET"]["RUN"]
@@ -144,6 +151,8 @@ def download_ENA_metadata(accession_dict,
                 suppressed.write(cleaned_accession + "\n")
             return None
         accession_metadata = accession_metadata["SAMPLE_SET"]
+        # extract biodsample id for isolate
+        biosample_id = accession_metadata["SAMPLE"]["IDENTIFIERS"]["EXTERNAL_ID"]["#text"]
         for link in accession_metadata["SAMPLE"]["SAMPLE_LINKS"]["SAMPLE_LINK"]:
             if link["XREF_LINK"]["DB"] == "ENA-RUN":
                 run_accession = link["XREF_LINK"]["ID"]
@@ -152,6 +161,10 @@ def download_ENA_metadata(accession_dict,
                 fastqLinks = fastqTable[4].split(";")
                 for fql in range(len(fastqLinks)):
                     fastqLinks[fql] = "https://" + fastqLinks[fql]
+                # if an assembly is available in the ENA, add the link to the sequence links
+                if assemblyURLs:
+                    if biosample_id in assemblyURLs:
+                        fastqLinks.append(assemblyURLs[biosample_id])
                 accession_metadata.update({"ENA-FASTQ-FILES" : fastqLinks})
         for attribute in accession_metadata["SAMPLE"]["SAMPLE_ATTRIBUTES"]["SAMPLE_ATTRIBUTE"]:
             if attribute["TAG"] == "ENA-FIRST-PUBLIC":
@@ -168,7 +181,7 @@ def download_ENA_metadata(accession_dict,
                 for accession, supplement in GPS_metadataJSON.items():
                     if "ERS" in supplement.keys() and supplement["ERS"] == cleaned_accession:
                         GPS_metadata = supplement
-            isolateName = GPS_metadata["Lane_Id"]
+            isolateName = GPS_metadata["Lane_Id"].replace("_", " ")
         else:
             isolateName = cleaned_accession
         metadata = {"isolateName" : isolateName,
@@ -180,7 +193,7 @@ def download_ENA_metadata(accession_dict,
                     "SubmissionDate" : submission_date,
                     "Organism_name" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["SCIENTIFIC_NAME"],
                     "Taxid" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["TAXON_ID"],
-                    "BioSample" : accession_metadata["SAMPLE"]["IDENTIFIERS"]["EXTERNAL_ID"]["#text"],
+                    "BioSample" : biosample_id,
                     "source" : "ENA",
                     "sequenceURL" : accession_metadata["ENA-FASTQ-FILES"],
                     "allAttributes" : json.dumps(accession_metadata["SAMPLE"])}
@@ -238,22 +251,30 @@ def main():
            GPS_metadataJSON = json.loads(metaFile.read())
     else:
         GPS_metadataJSON = None
+    # import file of biosample assembly links k, v pairs
+    if args.assemblyURLs:
+        with open(args.assemblyURLs, "r") as linksFile:
+           assemblyURLs = json.loads(linksFile.read())
+    else:
+        assemblyURLs = None
     if args.read_source == "ena":
         access_data = []
         for job in tqdm(job_list):
             access_data +=  Parallel(n_jobs=args.n_cpu)(delayed(download_ENA_metadata)(access,
                                                                                        args.output_dir,
                                                                                        args.GPS,
-                                                                                       GPS_metadataJSON) for access in job)
+                                                                                       GPS_metadataJSON,
+                                                                                       assemblyURLs) for access in job)
         #access_data = [link for row in access_data for link in row]
         fastq_links = []
         metadata = []
         for line in access_data:
-            fastq_links += line[0]
-            metadata.append(line[1])
-            indexIsolateDict.update(line[2])
+            if line:
+                fastq_links += line[0]
+                metadata.append(line[1])
+                indexIsolateDict.update(line[2])
         # get BioSample Metadata
-        sys.stderr.write('\nDownload BioSample metadata\n')
+        sys.stderr.write('\nDownloading BioSample metadata\n')
         #### need to get assembly accessions too if they are present for the GPS data
         for metadata_line in tqdm(metadata):
             biosample_metadata = get_biosample_metadata(metadata_line["BioSample"], args.email)

@@ -1,9 +1,10 @@
-name: BQ_env
+name: snakemake
 channels:
   - conda-forge
   - bioconda
   - defaults
 dependencies:
+  - snakemake
   - python
   - numpy
   - biopython

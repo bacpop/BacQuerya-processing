@@ -16,8 +16,9 @@ def get_options():
     io_opts.add_argument("-a",
                         "--annotation-dir",
                         dest="annotation_dir",
-                        required=True,
+                        required=False,
                         help='directory of functonal annotations in GFF format for panaroo input',
+                        default=None,
                         type=str)
     io_opts.add_argument("-g",
                         "--genome-dir",
@@ -28,7 +29,8 @@ def get_options():
     io_opts.add_argument("-p",
                         "--prodigal-dir",
                         dest="prodigal_dir",
-                        required=True,
+                        required=False,
+                        default=None,
                         help='directory of prodigal-predicted annotation files',
                         type=str)
     io_opts.add_argument("-i",
@@ -195,19 +197,20 @@ def merge_all_annotations(all_region_names,
                 position_tuple = (int(predicted_split[3]), int(predicted_split[4]))
                 if not position_tuple in positions:
                     annotations_to_add.append(predicted_line)
-            merged_annotation = region_annotation.splitlines() #+ annotations_to_add
+            merged_annotation = region_annotation.splitlines() + annotations_to_add
             predicted_regions_merged.append(region_label)
             all_merged_annotations += merged_annotation
     # adds predicted annotations for regions that don't already have existing annotations
-   # for predicted_region_label in range(len(predicted_region_names)):
-      #  if not predicted_region_names[predicted_region_label] in predicted_regions_merged:
-         #   all_merged_annotations += all_predicted_annotations[predicted_region_label].splitlines()
+    for predicted_region_label in range(len(predicted_region_names)):
+        if not predicted_region_names[predicted_region_label] in predicted_regions_merged:
+            all_merged_annotations += all_predicted_annotations[predicted_region_label].splitlines()
     return all_region_names, all_merged_annotations
 
 def concatenate_inputs(annotation_file,
                        genome_dir,
                        output_dir,
                        prodigal_dir,
+                       annotation_dir,
                        index_file):
     """This function merges existing annotations with prodigal-predicted annotations and reformats them for panaroo input"""
     # import annotation and genome files
@@ -221,19 +224,21 @@ def concatenate_inputs(annotation_file,
         stored_annotation = a.read()
     with open(genome_file, "r") as g:
         stored_genome = g.read()
-    # if prodigal file exists, import it
-    predictedAnnotationFile = os.path.join(prodigal_dir, os.path.basename(annotation_file))
-    if os.path.exists(predictedAnnotationFile):
-        add_predicted = True
-        with open(predictedAnnotationFile, "r") as prodigalFile:
-            predicted_annotations = prodigalFile.read()
-    else:
-        add_predicted = False
+    if annotation_dir and prodigal_dir:
+        # if prodigal file exists, import it
+        predictedAnnotationFile = os.path.join(prodigal_dir, os.path.basename(annotation_file))
+        if os.path.exists(predictedAnnotationFile):
+            add_predicted = True
+            with open(predictedAnnotationFile, "r") as prodigalFile:
+                predicted_annotations = prodigalFile.read()
+        else:
+            add_predicted = False
     # split annotation and genome into regions
     stored_genome = stored_genome.split('>')[1:]
     stored_annotation = stored_annotation.split("##sequence-region ")[1:]
-    all_region_names, all_region_annotations = reformat_existing_annotations(stored_annotation,
-                                                                             stored_genome)
+    if annotation_dir:
+        all_region_names, all_region_annotations = reformat_existing_annotations(stored_annotation,
+                                                                                stored_genome)
     if add_predicted:
         # if predicted annotations exist, reformat them for compatibility
         predicted_region_names, all_predicted_annotations, pred_no = reformat_predicted_annotations(predicted_annotations, pred_no)
@@ -242,13 +247,13 @@ def concatenate_inputs(annotation_file,
                                                                          all_region_annotations,
                                                                          predicted_region_names,
                                                                          all_predicted_annotations)
+        # update cog index number for subsequent runs
+        indexNoDict["predictedIndexNo"] = pred_no
     # write out reformatted GFF file
     annotated_file = "\n".join(all_region_names + all_region_annotations) + "\n##FASTA\n" + ">".join(stored_genome)
     filename_cleaned = os.path.join(output_dir, os.path.basename(annotation_file))
     with open(filename_cleaned,'w') as o:
         o.write(annotated_file)
-    # update cog index number for subsequent runs
-    indexNoDict["predictedIndexNo"] = pred_no
     with open(index_file, "w") as indexFile:
         indexFile.write(json.dumps(indexNoDict))
 
@@ -258,17 +263,26 @@ def main():
     # create output directory
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
-    annotation_files = glob.glob(os.path.join(args.annotation_dir, "*.gff"))
-    # parallelise
-    job_list = [
-        annotation_files[i:i + args.n_cpu] for i in range(0, len(annotation_files), args.n_cpu)
-    ]
+
+    if args.prodigal_dir:
+        prodigal_files = glob.glob(os.path.join(args.prodigal_dir, "*.gff"))
+        # parallelise
+        job_list = [
+            prodigal_files[i:i + args.n_cpu] for i in range(0, len(prodigal_files), args.n_cpu)
+        ]
+    if args.annotation_dir:
+        annotation_files = glob.glob(os.path.join(args.annotation_dir, "*.gff"))
+        # parallelise
+        job_list = [
+            annotation_files[i:i + args.n_cpu] for i in range(0, len(annotation_files), args.n_cpu)
+        ]
     # iterate through annotations and reformat for panaroo input
     for job in tqdm(job_list):
         Parallel(n_jobs=args.n_cpu)(delayed(concatenate_inputs)(annotation,
                                                                 args.genome_dir,
                                                                 args.output_dir,
                                                                 args.prodigal_dir,
+                                                                args.annotation_dir,
                                                                 args.index_file) for annotation in job)
 if __name__ == '__main__':
     main()
