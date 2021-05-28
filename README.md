@@ -10,6 +10,6 @@ Scripts in this repository may be used either with the included snakemake pipeli
 
 ## Snakemake pipeline
 
-Parameters for the automated Snakemake pipeline can be adjusted by modifying the '''config.yml''' file, or from the command line. An example command to run the '''retrieve_ena_read_metadata''' rule on 7 threads would be:
+Parameters for the automated Snakemake pipeline can be adjusted by modifying the 'config.yml' file, or from the command line. An example command to run the 'retrieve_ena_read_metadata' rule on 7 threads would be:
 
-'''snakemake --cores 1 --config n_cpu=7 retrieve_ena_read_metadata'''
+'snakemake --cores 1 --config n_cpu=7 retrieve_ena_read_metadata'
