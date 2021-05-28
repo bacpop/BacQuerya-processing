@@ -8,8 +8,43 @@ The BacQuerya-processing pipeline sources genomic metadata by accession ID from 
 
 Scripts in this repository may be used either with the included snakemake pipeline or individually using the helper scripts.
 
+## Installation
+
+To download BacQuerya-processing from source, run:
+```git clone https://github.com/bacpop/BacQuerya-processing.git```
+
 ## Snakemake pipeline
 
-Parameters for the automated Snakemake pipeline can be adjusted by modifying the 'config.yml' file, or from the command line. An example command to run the 'retrieve_ena_read_metadata' rule on 7 threads would be:
+Parameters for the automated Snakemake pipeline can be adjusted by modifying the ```config.yml``` file, or from the command line. An example command to run the ```retrieve_ena_read_metadata``` rule on 7 threads would be:
 
-'snakemake --cores 1 --config n_cpu=7 retrieve_ena_read_metadata'
+```snakemake --cores 1 --config n_cpu=7 retrieve_ena_read_metadata```
+
+## Scripts
+
+Snakemake rule:
+```
+retrieve_assembly_stats
+```
+Equivalent script command:
+```
+python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}
+```
+
+Snakemake rule:
+```
+retrieve_annotations
+```
+Equivalent script command:
+```
+python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}
+```
+
+Snakemake rule:
+```
+retrieve_genomes
+```
+Equivalent script command:
+```
+python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}
+```
+
