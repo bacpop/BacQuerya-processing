@@ -15,16 +15,9 @@ rule retrieve_assembly_stats:
     params:
         email=config['extract_entrez_information']['email'],
         attribute=config['extract_entrez_information']['assembly'],
-        threads=config['n_cpu'],
-        GPS=config['GPS']
+        threads=config['n_cpu']
     run:
-        if not os.path.exists("retrieved_assemblies2"):
-            shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
-            if params.GPS == True:
-                shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
-        else:
-            shell("mkdir {output} && cp retrieved_assemblies2/* {output}")
-
+        shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
 
 # retrieve isolate-GFFS
 rule retrieve_annotations:
@@ -35,15 +28,9 @@ rule retrieve_annotations:
     params:
         email=config['extract_entrez_information']['email'],
         attribute=config['extract_entrez_information']['gff'],
-        threads=config['n_cpu'],
-        GPS=config['GPS']
+        threads=config['n_cpu']
     run:
-        if not os.path.exists("retrieved_annotations2"):
-            shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
-            if params.GPS == True:
-                    shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
-        else:
-            shell("mkdir {output} && cp retrieved_annotations2/* {output}")
+        shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
 
 # gunzip annotation files
 rule unzip_annotations:
@@ -63,16 +50,9 @@ rule retrieve_genomes:
     params:
         email=config['extract_entrez_information']['email'],
         attribute=config['extract_entrez_information']['genome'],
-        threads=config['n_cpu'],
-        GPS=config['GPS']
+        threads=config['n_cpu']
     run:
-        if not os.path.exists("retrieved_genomes2"):
-            shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
-            if params.GPS == True:
-                shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
-        if os.path.exists("retrieved_genomes2"):
-            shell("mkdir {output} && cp retrieved_genomes2/* {output}")
-
+        shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
 
 # retrieve raw reads using SRA toolkit
 rule retrieve_sra_reads:
@@ -224,24 +204,18 @@ rule run_panaroo:
         rules.reformat_annotations.output
     params:
         threads=config["n_cpu"],
-        run_type=config["run_type"],
-        GPS=config['GPS']
+        run_type=config["run_type"]
     output:
         directory("panaroo_output")
     run:
-        if not (params.GPS == True or os.path.exists("panaroo_output2")):
-            if params.run_type == "reference":
-                num_annotations = len(glob.glob(os.path.join(input[0], "*.gff")))
-                if num_annotations > 1:
-                    shell("panaroo -i {input}/*.gff -o {output} --clean-mode sensitive -t {params.threads}")
-                else:
-                    shell("mkdir {output}")
+        if params.run_type == "reference":
+            num_annotations = len(glob.glob(os.path.join(input[0], "*.gff")))
+            if num_annotations > 1:
+                shell("panaroo -i {input}/*.gff -o {output} --clean-mode sensitive -t {params.threads}")
             else:
                 shell("mkdir {output}")
-        if params.GPS == True:
-            shell("mkdir {output} && cp panaroo_gps/* {output}")
-        if os.path.exists("panaroo_output2"):
-            shell("mkdir {output} && cp panaroo_output2/* {output}")
+        else:
+            shell("mkdir {output}")
 
 # merge current panaroo output with previous panaroo outputs
 rule merge_panaroo:
@@ -250,13 +224,12 @@ rule merge_panaroo:
         annotation_dir=rules.reformat_annotations.output
     params:
         threads=config['n_cpu'],
-        run_type=config["run_type"],
-        GPS=config['GPS']
+        run_type=config["run_type"]
     output:
         touch("merge_panaroo.done")
     run:
         annotation_files = glob.glob(os.path.join(input.annotation_dir[0], "*.gff"))
-        if not params.GPS and params.run_type == "reference" and not os.path.exists("panaroo_output2"):
+        if params.run_type == "reference":
             if len(annotation_files) > 1:
                 if os.path.exists("previous_run"):
                     shell("mkdir merged_panaroo_output && panaroo-merge -d {input.current_output} previous_run/panaroo_output -o merged_panaroo_output -t {params.threads} && cp -rf merged_panaroo_output/* panaroo_output && rm -rf merged_panaroo_output")
@@ -274,14 +247,10 @@ rule extract_assembly_stats:
     params:
         index=config['extract_assembly_stats']['index_file'],
         threads=config['n_cpu'],
-        email=config['extract_entrez_information']['email'],
-        GPS=config["GPS"],
-        GPS_JSON=config["GPS_metadataJSON"]
+        email=config['extract_entrez_information']['email']
     run:
-        if not os.path.exists("extracted_assembly_stats2"):
-            shell('python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output} -e {params.email} --previous-run previous_run --threads {params.threads} --GPS {params.GPS} --GPS-metdata {params.GPS_JSON}')
-        else:
-            shell("mkdir {output} && cp extracted_assembly_stats2/* {output}")
+        shell('python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output} -e {params.email} --previous-run previous_run --threads {params.threads} --GPS {params.GPS} --GPS-metdata {params.GPS_JSON}')
+
 # retrieve ena read metadata
 rule retrieve_ena_read_metadata:
     input:
@@ -294,15 +263,9 @@ rule retrieve_ena_read_metadata:
     params:
         index=config['extract_assembly_stats']['index_file'],
         email=config['extract_entrez_information']['email'],
-        threads=config['n_cpu'],
-        GPS=config["GPS"],
-        GPS_JSON=config["GPS_metadataJSON"],
-        assemblyURLs="661K_biosampleAssemblyURLs.json"
+        threads=config['n_cpu']
     run:
-        if not os.path.exists("retrieved_ena_read_metadata2"):
-            shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --GPS {params.GPS} --GPS-metdata {params.GPS_JSON} --assembly-url {params.assemblyURLs}')
-        else:
-            shell("mkdir {output} && cp retrieved_ena_read_metadata2/* {output}")
+        shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --GPS {params.GPS} --GPS-metdata {params.GPS_JSON} --assembly-url {params.assemblyURLs}')
 
 # retrieve raw reads from ENA
 rule retrieve_ena_reads:
@@ -359,10 +322,7 @@ rule mafft_align:
     output:
         directory("aligned_gene_sequences")
     run:
-        if not os.path.exists("aligned_gene_sequences2"):
-            shell("python generate_alignments-runner.py --graph-dir {input.graphDir} --extracted-genes {input.extracted_genes} --output-dir {output} --threads {params.threads}")
-        else:
-            shell("mkdir {output} && cp aligned_gene_sequences2/* {output}")
+        shell("python generate_alignments-runner.py --graph-dir {input.graphDir} --extracted-genes {input.extracted_genes} --output-dir {output} --threads {params.threads}")
 
 # append isolate attributes to elasticsearch index
 rule index_isolate_attributes:
@@ -390,8 +350,7 @@ rule merge_runs:
     output:
         touch("merge_runs.done")
     run:
-        if not os.path.exists("aligned_gene_sequences"):
-            shell('python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --graph-dir {input.graphDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --accessionFile {input.currentRunAccessions} --previous-run previous_run --threads {params.threads}')
+        shell('python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --graph-dir {input.graphDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --accessionFile {input.currentRunAccessions} --previous-run previous_run --threads {params.threads}')
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_gene_sequences:
