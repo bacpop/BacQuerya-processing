@@ -1,3 +1,14 @@
+# Table of Contents  
+
+* [BacQuerya](#bacquerya)  
+* [BacQuerya-processing](#bacquerya-processing)
+* [Installation](#installation)  
+* [Snakemake pipeline](#snakemake-pipeline)  
+* [Local instances of BacQuerya](#local-instances-of-bacquerya)  
+* [Specifying elastic parameters and secrets](#specifying-elastic-parameters-and-secrets)  
+* [Contributors](#contributors)
+
+
 # BacQuerya
 
 BacQuerya is a search engine that aims to consolidate and present all publicly available genomic metadata for bacterial pathogens. BacQuerya is currently in beta and as such, is unstable in some circumstances and only houses *S. pneumoniae* genomic metadata at this time. 
