@@ -256,4 +256,4 @@ To create API keys for your indices, see [https://www.elastic.co/guide/en/elasti
 
 # Contributors
 
-BacQuerya, BacQuerya-api and BacQuerya-processing were developed by Daniel Anderson and John Lees.
+[https://github.com/bacpop/BacQuerya](BacQuerya), [https://github.com/bacpop/BacQuerya-api](BacQuerya-api) and [https://github.com/bacpop/BacQuerya-processing](BacQuerya-processing) were developed by Daniel Anderson and John Lees.
