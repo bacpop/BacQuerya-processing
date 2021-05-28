@@ -75,7 +75,7 @@ Converts publicly available functional annotations in GFF3 format to Prokka form
 
 **Equivalent shell command**:
 ```
-python panaroo_clean_inputs-runner.py -a <annotation_directory> -g <assembly_directory> -p <prodigal_directory> --index-file <index_file> -o {output} --threads <threads>
+python panaroo_clean_inputs-runner.py -a <annotation_directory> -g <assembly_directory> -p <prodigal_directory> --index-file <index_file> -o <output> --threads <threads>
 ```
 
 ### 4. run_panaroo rule:
