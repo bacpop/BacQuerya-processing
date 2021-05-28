@@ -26,7 +26,7 @@ Parameters for the automated Snakemake pipeline can be adjusted by modifying the
 
 ## Rules
 
-1. ```retrieve_assembly_stats```, ```retrieve_annotations``` and ```retrieve_genomes``` rules:
+### 1. retrieve_assembly_stats, retrieve_annotations and retrieve_genomes rules:
 
 Retrieves information of interest from NCBI GenBank by accession ID. 
 
@@ -42,7 +42,7 @@ Retrieves information of interest from NCBI GenBank by accession ID.
 python extract_entrez_information-runner.py -s <accession_file> -e <email> --threads <threads> -o <output> -a <attribute>
 ```
 
-2. ```run_prodigal``` rule:
+### 2. run_prodigal rule:
 
 Predicts genes in all assemblies in an input directory and outputs predicted annotations in GFF3 format.
 **Inputs**:
@@ -50,7 +50,7 @@ Predicts genes in all assemblies in an input directory and outputs predicted ann
 * ```output```: Output directory name for predicted annotations. 
 * ```threads```: Number of threads for prediction. 
 
-3. ```reformat_annotations``` rule:
+### 3. eformat_annotations rule:
 
 Converts publicly available functional annotations in GFF3 format to Prokka format for direct input into Panaroo.
 
@@ -67,9 +67,9 @@ Converts publicly available functional annotations in GFF3 format to Prokka form
 python panaroo_clean_inputs-runner.py -a <annotation_directory> -g <assembly_directory> -p <prodigal_directory> --index-file <index_file> -o {output} --threads <threads>
 ```
 
-4. ```run_panaroo``` rule:
+### 4. run_panaroo rule:
 
-Runs panaroo on prokka-formatted functional annotation files. 
+Runs panaroo [https://github.com/gtonkinhill/panaroo](https://github.com/gtonkinhill/panaroo) on prokka-formatted functional annotation files. 
 
 **Inputs**:
 * ```input_directory```: Directory of prokka formatted function annotation files.
@@ -81,9 +81,9 @@ Runs panaroo on prokka-formatted functional annotation files.
 panaroo -i <input_directory>/*.gff -o <output> --clean-mode sensitive -t <threads>
 ```
 
- 5. ```extract_assembly_stats``` rule:
+ ### 5. extract_assembly_stats rule:
 
-Generates a JSON file of isolate metadata. 
+Generates a JSON file of metadata for isolates with assemblies. 
 
 **Inputs**:
 * ```assembly_stats_directory```: Directory of uncompressed assembly statistics downloaded from NCBI GenBank.
@@ -95,11 +95,75 @@ Generates a JSON file of isolate metadata.
 * ```previous_run```: Directory storing previous snakemake outputs.  
 
 **Outputs**:
-*```isolateAssemblyAttributes.json```: JSON file of isolate metadata. 
-*```biosampleIsolatePairs.json```: JSON file of isolate name key and BioSample accession ID values. 
-*```indexIsolatePairs.json```: JSON file of isolate name key and isolate index number values. 
+* ```isolateAssemblyAttributes.json```: JSON file of isolate assembly metadata. 
+* ```biosampleIsolatePairs.json```: JSON file of isolate name key and BioSample accession ID values. 
+* ```indexIsolatePairs.json```: JSON file of isolate name key and isolate index number values. 
 
 **Equivalent shell command**:
 ```
-python extract_assembly_stats-runner.py -a <assembly_stats_directory> -g <assembly_directory> -i <index_file> -o <output> -e <email> --previous-run previous_run --threads <threads>```
+python extract_assembly_stats-runner.py -a <assembly_stats_directory> -g <assembly_directory> -i <index_file> -o <output> -e <email> --previous-run previous_run --threads <threads>
+```
 
+### 6. retrieve_ena_read_metadata rule:
+
+Generates a JSON file of metadata for isolates with reads. 
+
+**Inputs**:
+* ```accession_file```: Filepath of a "\n" separated list of ERR or ERS accession IDs for asssemblies available through the ENA.  
+* ```index_file```: Filepath of JSON storing index numbers (Of the form ```{"isolateIndexNo": 0, "geneIndexNo": 0, "predictedIndexNo": 0}```).
+* ```output```: Output directory for isolate metadata files. 
+* ```email```: An email address to specify for Entrez programmatic access. 
+* ```threads```: Number of threads for converting asssembly statistics to JSON.
+* ```previous_run```: Directory storing previous snakemake outputs.  
+
+**Outputs**:
+* ```fastq_links.txt```: "\n" separated list of read sequence download URLs. 
+* ```isolateReadAttributes.json```: JSON file of isolate metadata. 
+
+**Equivalent shell command**:
+```
+python extract_read_metadata-runner.py -s <accession_file> -r ena -i <index_file> -o <output> -e <email> --previous-run previous_run --threads <threads>
+```
+
+### 7. retrieve_ena_reads rule:
+
+Multithreaded download of read sets. 
+
+**Inputs**:
+* ```fastq_links```: Filepath of a "\n" separated list of read sequence download URLs. 
+
+### 8. extract_genes rule:
+
+Extracts gene metadata for assemblies from a panaroo output and adds genes per isolate to a JSON file of isolate metadata.
+
+**Inputs**:
+* ```assembly_directory```: Directory of uncompressed assemblies downloaded from NCBI GenBank.
+* ```annotation_directory```: Directory of uncompressed functional annotations in GFF3 format.
+* ```graph_directory```: Directory of a panaroo graph constructed from the annotations in the ```annotation_directory```.
+* ```isolate_metadata```: Directory of isolate metadata output by ```extract_assembly_stats.py```
+* ```index_metadata```: Directly index gene metadata in elastic index in this script (True or False).
+* ```output```: Output directory for gene metadata files. 
+* ```threads```: Number of threads to annotate "query isolates". 
+* ```index_name```: Name of elastic gene metadata index.
+* ```run_type```: Whether this is a "reference" or "query" run (see **reference vs query runs**). 
+• ```update```: Update the input panaroo outputs with the new gene names and annotations. 
+
+**Equivalent shell command**:
+```
+python extract_genes-runner.py -s <assembly_directory> -a <annotation_directory> -g <graph_directory> -m <isolate_metadata> -i <index_metadata> -o <output> --threads <threads> --index-name <index_name> --prev-dir previous_run --run-type <run_type> [--update]
+```
+
+### 9. mafft_align rule:
+
+Extracts gene metadata for assemblies from a panaroo output and adds genes per isolate to a JSON file of isolate metadata.
+
+**Inputs**:
+* ```graph_directory```: Directory of a panaroo graph constructed from the annotations in the ```annotation_directory``` and updated by the ```extract_genes``` rule.
+* ```gene_metadata```: Directory output by the ```extract_genes``` rule. Requires ```panarooPairs.json``` to ensure gene names are consistent across outputs.
+* ```output```: Output directory for the aligned genes.
+* ```threads```: Number of threads for alignment.
+
+**Equivalent shell command**:
+```
+python generate_alignments-runner.py --graph-dir <graph_directory> --extracted-genes <gene_metadata> --output-dir <output> --threads <threads>
+```
