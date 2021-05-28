@@ -209,11 +209,11 @@ snakemake --cores 1 --config run_type=<run_type>
 ```
 This option impacts whether or not the genomic information in the current run is used to update the existing panaroo output of a previous ```reference``` run. If ```reference``` is specified, panaroo is run on the isolates in the current run and this output is merged with the previous output to become the new reference panaroo output. If ```query``` is selected, prokka-formatted functional annotations are integrated into the reference output one by one to identify genes, but the reference panaroo output is **not** updated with the genomic information from these isolates. 
 
-## Local instances of BacQuerya
+# Local instances of BacQuerya
 
 BacQuerya-processing primarily has been designed to populate the indices for the BacQuerya website but we appreciate our processing and indexing pipeline may have use cases beyond our original intentions. This may include locally hosting indices, allowing users to index and search through sensitive genomic data not currently in the public domain. To do this, we anticipate that a number of scripts will require some customisation depending on the use case and we would be happy to answer any questions you may have on setting up one of these private instances. However, local instances of BacQuerya sourcing publicly available data can be set up relatively easily.
 
-# Locally hosting elastic indices
+## Locally hosting elastic indices
 
 Elasticsearch is easy to install, free for local installations and interacts with the processing pipeline through the same API as the elastic cloud indices we use with BacQuerya. Elasticsearch is available for download from [https://www.elastic.co/downloads/elasticsearch](https://www.elastic.co/downloads/elasticsearch). Uncompress the download and add the following line to the end of the ```config/elasticsearch.yml``` file within the bundle. 
 ```
