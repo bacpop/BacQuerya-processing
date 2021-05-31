@@ -165,8 +165,8 @@ def main():
     output_file = os.path.join(args.output_dir, "isolateAssemblyAttributes.json")
     biosampleKeys = os.path.join(args.output_dir, "biosampleIsolatePairs.json")
     isolateKeys = os.path.join(args.output_dir, "indexIsolatePairs.json")
-    if not os.path.exists(os.path.dirname(args.output_dir)):
-        os.mkdir((os.path.dirname(args.output_dir)))
+    if not os.path.exists(args.output_dir):
+        os.mkdir(args.output_dir)
     assembly_reports = glob.glob(args.assemblies + '/*_assembly_stats.txt')
     indexed_assemblies = []
     with open(args.index_file, "r") as indexFile:
@@ -213,7 +213,7 @@ def main():
     labelBiosampleDict = {}
     for feat in tqdm(all_features):
         labelBiosampleDict.update({feat["isolateNameUnderscore"] : feat["BioSample"]})
-        biosample_data = get_biosample_metadata(feat["BioSample"], args.email, None)
+        biosample_data = get_biosample_metadata(feat["BioSample"], args.email)
         if biosample_data:
             feat.update(biosample_data)
     with open(os.path.join(output_file), "w") as a:

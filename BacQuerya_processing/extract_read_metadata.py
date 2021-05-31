@@ -278,7 +278,8 @@ def main():
         #### need to get assembly accessions too if they are present for the GPS data
         for metadata_line in tqdm(metadata):
             biosample_metadata = get_biosample_metadata(metadata_line["BioSample"], args.email)
-            metadata_line.update(biosample_metadata)
+            if biosample_metadata:
+                metadata_line.update(biosample_metadata)
         # write out list of run accessions
         with open(os.path.join(args.output_dir, "fastq_links.txt"), "w") as r:
             r.write("\n".join(fastq_links))
