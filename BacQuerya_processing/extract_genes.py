@@ -183,9 +183,10 @@ def update_panaroo_outputs(G,
     # update gene_data.csv
     sys.stderr.write('\nUpdating all gene_data.csv file\n')
     for index, row in gene_data.iterrows():
-        new_annotations = cluster_name_dict[row["clustering_id"]]
-        gene_data["gene_name"][index] = new_annotations["name"]
-        gene_data["description"][index] = new_annotations["description"]
+        if row["clustering_id"] in cluster_name_dict:
+            new_annotations = cluster_name_dict[row["clustering_id"]]
+            gene_data["gene_name"][index] = new_annotations["name"]
+            gene_data["description"][index] = new_annotations["description"]
     gene_data.to_csv(os.path.join(graph_dir, "gene_data.csv"), index=False)
     del gene_data
     del gene_data_dict

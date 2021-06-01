@@ -309,7 +309,7 @@ rule extract_genes:
         index_name=config['index_sequences']['elasticSearchIndex'],
         run_type=config["run_type"]
     shell:
-        'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -g {input.graphDir} -i {params.index} -o {output} --threads {params.threads} --index-name {params.index_name} --prev-dir previous_run --run-type {params.run_type} --update'
+        'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -m {input.assemblyStatDir} -g {input.graphDir} -i {params.index} -o {output} --threads {params.threads} --index-name {params.index_name} --prev-dir previous_run --run-type {params.run_type} --update'
 
 # generate mafft alignments for panaroo output
 rule mafft_align:
