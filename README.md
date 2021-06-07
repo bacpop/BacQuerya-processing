@@ -25,8 +25,8 @@ To install BacQuerya-processing from source, run:
 ```
 git clone https://github.com/bacpop/BacQuerya-processing.git
 conda create -n snakemake --file=environment.yml
-conda install snakemake
 conda activate snakemake
+conda install snakemake
 ```
 
 # Snakemake pipeline
@@ -61,7 +61,7 @@ Predicts genes in all assemblies in an input directory and outputs predicted ann
 * ```output```: Output directory name for predicted annotations. 
 * ```threads```: Number of threads for prediction. 
 
-### 3. eformat_annotations rule:
+### 3. reformat_annotations rule:
 
 Converts publicly available functional annotations in GFF3 format to Prokka format for direct input into Panaroo.
 
@@ -75,7 +75,7 @@ Converts publicly available functional annotations in GFF3 format to Prokka form
 
 **Equivalent shell command**:
 ```
-python panaroo_clean_inputs-runner.py -a <annotation_directory> -g <assembly_directory> -p <prodigal_directory> --index-file <index_file> -o {output} --threads <threads>
+python panaroo_clean_inputs-runner.py -a <annotation_directory> -g <assembly_directory> -p <prodigal_directory> --index-file <index_file> -o <output> --threads <threads>
 ```
 
 ### 4. run_panaroo rule:
