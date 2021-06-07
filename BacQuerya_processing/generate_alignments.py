@@ -11,9 +11,9 @@ from tqdm import tqdm
 
 def get_options():
     import argparse
-    description = 'Extract features from gff and sequence files'
+    description = 'Align the nucleotide sequences of panaroo nodes using the MAFFT Partree algorithm'
     parser = argparse.ArgumentParser(description=description,
-                                        prog='extract_genes')
+                                        prog='align_genes')
     io_opts = parser.add_argument_group('input')
     io_opts.add_argument("-g",
                         "--graph-dir",
