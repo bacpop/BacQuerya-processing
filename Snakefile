@@ -247,9 +247,10 @@ rule extract_assembly_stats:
     params:
         index=config['extract_assembly_stats']['index_file'],
         threads=config['n_cpu'],
-        email=config['extract_entrez_information']['email']
+        email=config['extract_entrez_information']['email'],
     run:
-        shell('python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output} -e {params.email} --previous-run previous_run --threads {params.threads} --GPS {params.GPS} --GPS-metdata {params.GPS_JSON}')
+        shell('python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output} -e {params.email} --previous-run previous_run --threads {params.threads}')
+
 
 # retrieve ena read metadata
 rule retrieve_ena_read_metadata:
@@ -263,9 +264,10 @@ rule retrieve_ena_read_metadata:
     params:
         index=config['extract_assembly_stats']['index_file'],
         email=config['extract_entrez_information']['email'],
-        threads=config['n_cpu']
+        threads=config['n_cpu'],
+        GPS=False
     run:
-        shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --GPS {params.GPS} --GPS-metdata {params.GPS_JSON} --assembly-url {params.assemblyURLs}')
+        shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir}')
 
 # retrieve raw reads from ENA
 rule retrieve_ena_reads:
@@ -292,6 +294,24 @@ rule retrieve_ena_reads:
                 Parallel(n_jobs=params.threads)(delayed(download_read)(access,
                                                                     output[0]) for access in job)
         #'ascp -QT -l 300m -P33001 -i ~/.aspera/connect/etc/asperaweb_id_dsa.openssh era-fasp@fasp.sra.ebi.ac.uk:vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz {output}' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_1.fastq.gz
+
+# run mash screenon assemblies and reads
+rule run_mash_screen:
+    input:
+        read_dir=rules.retrieve_ena_reads.output,
+        assembly_dir=rules.unzip_genomes.output
+    params:
+        threads=config['n_cpu']
+    output:
+        directory("mash_results")
+    run:
+        reads = glob.glob(os.path.join(input.read_dir[0], "*"))
+        assemblies = glob.glob(os.path.join(input.assembly_dir[0], "*"))
+        genomes = reads + assemblies
+        os.mkdir(output[0])
+        for file in genomes:
+            shell_command = "./mash screen refseq.genomes.k21s1000.msh " + file + " > " + os.path.join(output[0], os.path.splitext(os.path.basename(file))[0]) + ".tab"
+            shell(shell_command)
 
 # build gene JSONS from GFF and sequence files
 rule extract_genes:

@@ -74,9 +74,9 @@ def get_options():
                         type=int)
     io_opts.add_argument("--GPS",
                         dest="GPS",
-                        required=True,
-                        help="if we are indexing GPS data or not",
-                        type=bool)
+                        required=False,
+                        help="specify if we are indexing GPS data",
+                        action='store_true')
     io_opts.add_argument("--GPS-metdata",
                         dest="GPS_metadataJSON",
                         required=False,
