@@ -7,13 +7,16 @@ from Bio import Entrez
 from joblib import Parallel, delayed
 import json
 import os
-import sys
-import subprocess
-from tqdm import tqdm
 import requests
+from shutil import copyfileobj
+import ssl
+import subprocess
+import sys
+from tqdm import tqdm
+from urllib.request import urlopen
 import xmltodict
 
-from BacQuerya_processing.extract_assembly_stats import get_biosample_metadata
+from BacQuerya_processing.extract_assembly_stats import get_biosample_metadata, calculate_assembly_stats
 from BacQuerya_processing.secrets import ENTREZ_API_KEY
 
 def get_options():
@@ -153,6 +156,7 @@ def download_ENA_metadata(accession_dict,
         accession_metadata = accession_metadata["SAMPLE_SET"]
         # extract biodsample id for isolate
         biosample_id = accession_metadata["SAMPLE"]["IDENTIFIERS"]["EXTERNAL_ID"]["#text"]
+        assembly_stats = False
         for link in accession_metadata["SAMPLE"]["SAMPLE_LINKS"]["SAMPLE_LINK"]:
             if link["XREF_LINK"]["DB"] == "ENA-RUN":
                 run_accession = link["XREF_LINK"]["ID"]
@@ -164,7 +168,22 @@ def download_ENA_metadata(accession_dict,
                 # if an assembly is available in the ENA, add the link to the sequence links
                 if assemblyURLs:
                     if biosample_id in assemblyURLs:
-                        fastqLinks.append(assemblyURLs[biosample_id])
+                        # if a Blackwell assembly is available, we need to retrieve it and calculate assembly statistics
+                        genome_representation = "full"
+                        assemblyLink = assemblyURLs[biosample_id]
+                        # download the assembly file and save too a temp directory
+                        ssl._create_default_https_context = ssl._create_unverified_context
+                        assemblyFile = os.path.join(temp_dir, os.path.basename(assemblyLink))
+                        with urlopen(assemblyLink) as in_stream, open(assemblyFile, 'wb') as out_file:
+                            copyfileobj(in_stream, out_file)
+                        # unzip the assembly file
+                        subprocess.run("gunzip " + assemblyFile, shell=True, check=True)
+                        # calculate assembly statistics
+                        contig_stats, scaffold_stats = calculate_assembly_stats(assemblyFile)
+                        assembly_stats = True
+                        fastqLinks.append(assemblyLink)
+                    else:
+                        genome_representation = "reads"
                 accession_metadata.update({"ENA-FASTQ-FILES" : fastqLinks})
         for attribute in accession_metadata["SAMPLE"]["SAMPLE_ATTRIBUTES"]["SAMPLE_ATTRIBUTE"]:
             if attribute["TAG"] == "ENA-FIRST-PUBLIC":
@@ -189,7 +208,7 @@ def download_ENA_metadata(accession_dict,
                     "read_accession" : cleaned_accession,
                     "isolate_index" : index_no,
                     "Submitter" : submitter,
-                    "Genome_representation" : "reads",
+                    "Genome_representation" : genome_representation,
                     "SubmissionDate" : submission_date,
                     "Organism_name" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["SCIENTIFIC_NAME"],
                     "Taxid" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["TAXON_ID"],
@@ -199,6 +218,10 @@ def download_ENA_metadata(accession_dict,
                     "allAttributes" : json.dumps(accession_metadata["SAMPLE"])}
         if GPS:
             metadata.update(GPS_metadata)
+        # add assembly stats to isolate metadata if it is defined
+        if assembly_stats:
+            metadata["contig_stats"] = contig_stats
+            metadata["scaffold_stats"] = scaffold_stats
         # output isolate: index pairs
         indexIsolatePair = {isolateName: index_no}
         if not run_accession == "":

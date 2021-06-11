@@ -361,10 +361,11 @@ rule supplement_isolate_metadata:
             mashSpecies = []
             for row in mashOut:
                 row = row.split("\t")
+                # filter out all rows with fewer than 3 matching hashes and those of phages
                 if int(row[1].split("/")[0]) > 2 and not "phage" in row[5]:
-                    mashIdentity.append(row[0])
-                    mashHashes.append(row[1])
-                    mashSpecies.append(row[5])
+                        mashIdentity.append(row[0])
+                        mashHashes.append(row[1])
+                        mashSpecies.append(row[5])
             isolate["mashIdentity"] = mashIdentity
             isolate["mashHashes"] = mashHashes
             isolate["mashSpecies"] = mashSpecies
@@ -388,6 +389,7 @@ rule supplement_isolate_metadata:
             mashSpecies = []
             for row in mashOut:
                 row = row.split("\t")
+                # filter out all rows with fewer than 3 matching hashes and those of phages
                 if int(row[1].split("/")[0]) > 2 and not "phage" in row[5]:
                     mashIdentity.append(row[0])
                     mashHashes.append(row[1])
