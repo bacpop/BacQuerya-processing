@@ -54,14 +54,16 @@ def assess_contamination(hashDict, genus):
 def caculate_score(isolate, GC_lower, GC_upper, length_lower, length_upper):
     """Calculate a rank score for all isolates"""
     score = 0
-    # calculate contamination and adjust score
-    mashHashes = isolate["mashHashes"]
-    mashSpecies = isolate["mashSpecies"]
-    genus = isolate["Organism_name"].split(" ")[0].lower()
-    hashDict = {}
-    for species in range(len(mashSpecies)):
-        hashDict[mashSpecies[species]] = mashHashes[species]
-    score += assess_contamination(hashDict, genus)
+    # currently it takes too long to download read sets so we are only running mash on assemblies
+    if "mashHashes" in isolate.keys():
+        # calculate contamination and adjust score
+        mashHashes = isolate["mashHashes"]
+        mashSpecies = isolate["mashSpecies"]
+        genus = isolate["Organism_name"].split(" ")[0].lower()
+        hashDict = {}
+        for species in range(len(mashSpecies)):
+            hashDict[mashSpecies[species]] = mashHashes[species]
+        score += assess_contamination(hashDict, genus)
     # adjust score depending on if reads or assembly
     if isolate["Genome_representation"] == "reads":
         score += 1
