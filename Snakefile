@@ -356,12 +356,18 @@ rule supplement_isolate_metadata:
             with open(os.path.join(mash_dir, accession + ".tab")) as mashFile:
                 mashOut = mashFile.read().splitlines()
             mashOut.sort(key=lambda x: x.split("\t")[0], reverse=True)
-            mashOut = mashOut[:10]
+            mashIdentity = []
+            mashHashes = []
+            mashSpecies = []
             for row in mashOut:
                 row = row.split("\t")
-                isolate["mashIdentity"] = row[0]
-                isolate["mashHashes"] = row[1]
-                isolate["mashSpecies"] = row[5]
+                if int(row[1].split("/")[0]) > 2 and not "phage" in row[5]:
+                    mashIdentity.append(row[0])
+                    mashHashes.append(row[1])
+                    mashSpecies.append(row[5])
+            isolate["mashIdentity"] = mashIdentity
+            isolate["mashHashes"] = mashHashes
+            isolate["mashSpecies"] = mashSpecies
             return isolate
 
         def appendMashReads(read, mash_dir):
@@ -377,12 +383,18 @@ rule supplement_isolate_metadata:
                     with open(os.path.join(mash_dir, read["run_accession"] + ".tab")) as mashFile:
                         mashOut = mashFile.read().splitlines()
             mashOut.sort(key=lambda x: x.split("\t")[0], reverse=True)
-            mashOut = mashOut[:10]
+            mashIdentity = []
+            mashHashes = []
+            mashSpecies = []
             for row in mashOut:
                 row = row.split("\t")
-                read["mashIdentity"] = row[0]
-                read["mashHashes"] = row[1]
-                read["mashSpecies"] = row[5]
+                if int(row[1].split("/")[0]) > 2 and not "phage" in row[5]:
+                    mashIdentity.append(row[0])
+                    mashHashes.append(row[1])
+                    mashSpecies.append(row[5])
+            read["mashIdentity"] = mashIdentity
+            read["mashHashes"] = mashHashes
+            read["mashSpecies"] = mashSpecies
             return read
 
         with open(os.path.join(input.assembly_metadata[0],"isolateAssemblyAttributes.json"), "r") as assemblyFile:
