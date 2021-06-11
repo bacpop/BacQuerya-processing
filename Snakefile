@@ -1,7 +1,12 @@
 import glob
 from joblib import Parallel, delayed
+import json
 import os
+import ssl
 import subprocess
+import sys
+from urllib.request import urlopen
+from shutil import copyfileobj
 from tqdm import tqdm
 
 configfile: 'config.yml'
@@ -208,14 +213,17 @@ rule run_panaroo:
     output:
         directory("panaroo_output")
     run:
-        if params.run_type == "reference":
-            num_annotations = len(glob.glob(os.path.join(input[0], "*.gff")))
-            if num_annotations > 1:
-                shell("panaroo -i {input}/*.gff -o {output} --clean-mode sensitive -t {params.threads}")
+        if os.path.exists("panaroo_output2"):
+            shell("mkdir {output} && cp panaroo_output2/* {output}")
+        else:
+            if params.run_type == "reference":
+                num_annotations = len(glob.glob(os.path.join(input[0], "*.gff")))
+                if num_annotations > 1:
+                    shell("panaroo -i {input}/*.gff -o {output} --clean-mode sensitive -t {params.threads}")
+                else:
+                    shell("mkdir {output}")
             else:
                 shell("mkdir {output}")
-        else:
-            shell("mkdir {output}")
 
 # merge current panaroo output with previous panaroo outputs
 rule merge_panaroo:
@@ -267,7 +275,10 @@ rule retrieve_ena_read_metadata:
         threads=config['n_cpu'],
         GPS=False
     run:
-        shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir}')
+        if os.path.exists("retrieved_ena_read_metadata2"):
+            shell("mkdir {output} && cp retrieved_ena_read_metadata2/* {output}")
+        else:
+            shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir}')
 
 # retrieve raw reads from ENA
 rule retrieve_ena_reads:
@@ -282,17 +293,24 @@ rule retrieve_ena_reads:
             shell("mkdir {output} && cp retrieved_ena_reads2/* {output}")
         else:
             def download_read(accession, output_dir):
-                shell_command = "wget --no-check-certificate --directory-prefix " + output_dir + " " + accession
-                subprocess.run(shell_command, check=True, shell=True)
+                if "contigs" in accession:
+                    ## currently only downloading assemblies and not read sets for efficiency
+                    ssl._create_default_https_context = ssl._create_unverified_context
+                    with urlopen(accession) as in_stream, open(os.path.join(output_dir, os.path.basename(accession)), 'wb') as out_file:
+                        copyfileobj(in_stream, out_file)
+                else:
+                    pass
+                return "success"
 
+            os.mkdir(output[0])
             with open(input[0], "r") as f:
                 run_accessions = f.read().splitlines()
             job_list = [
                 run_accessions[i:i + params.threads] for i in range(0, len(run_accessions), params.threads)
             ]
             for job in tqdm(job_list):
-                Parallel(n_jobs=params.threads)(delayed(download_read)(access,
-                                                                    output[0]) for access in job)
+                    results = Parallel(n_jobs=int(params.threads))(delayed(download_read)(access,
+                                                                                          output[0]) for access in job)
         #'ascp -QT -l 300m -P33001 -i ~/.aspera/connect/etc/asperaweb_id_dsa.openssh era-fasp@fasp.sra.ebi.ac.uk:vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz {output}' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_1.fastq.gz
 
 # run mash screenon assemblies and reads
@@ -305,13 +323,94 @@ rule run_mash_screen:
     output:
         directory("mash_results")
     run:
+        def run_mash(sequenceFile, output_dir):
+            """Multithreaded mash on genomic sequences"""
+            shell_command = "./mash screen -w -p 3 refseq.genomes.k21s1000.msh " + sequenceFile + " > " + os.path.join(output_dir, os.path.splitext(os.path.basename(sequenceFile))[0]) + ".tab"
+            subprocess.run(shell_command, shell=True, check=True)
+
         reads = glob.glob(os.path.join(input.read_dir[0], "*"))
         assemblies = glob.glob(os.path.join(input.assembly_dir[0], "*"))
-        genomes = reads + assemblies
+        genomes = assemblies + reads
         os.mkdir(output[0])
-        for file in genomes:
-            shell_command = "./mash screen refseq.genomes.k21s1000.msh " + file + " > " + os.path.join(output[0], os.path.splitext(os.path.basename(file))[0]) + ".tab"
-            shell(shell_command)
+        job_list = [
+                genomes[i:i + params.threads] for i in range(0, len(genomes), params.threads)
+            ]
+        for job in tqdm(job_list):
+            Parallel(n_jobs=params.threads)(delayed(run_mash)(sequence,
+                                                              output[0]) for sequence in job)
+
+# supplement isolate metadata with the mash screen output
+rule supplement_isolate_metadata:
+    input:
+        mash_output=rules.run_mash_screen.output,
+        ena_read_metadata=rules.retrieve_ena_read_metadata.output.output_dir,
+        assembly_metadata=rules.extract_assembly_stats.output
+    params:
+        threads=config['n_cpu']
+    output:
+        touch("supplement_metadata.done")
+    run:
+        def appendMashAssemblies(isolate, mash_dir):
+            """Add mash output to assembly metadata"""
+            accession = isolate["isolateNameUnderscore"]
+            with open(os.path.join(mash_dir, accession + ".tab")) as mashFile:
+                mashOut = mashFile.read().splitlines()
+            mashOut.sort(key=lambda x: x.split("\t")[0], reverse=True)
+            mashOut = mashOut[:10]
+            for row in mashOut:
+                row = row.split("\t")
+                isolate["mashIdentity"] = row[0]
+                isolate["mashHashes"] = row[1]
+                isolate["mashSpecies"] = row[5]
+            return isolate
+
+        def appendMashReads(read, mash_dir):
+            """Add mash output to assembly metadata"""
+            try:
+                with open(os.path.join(mash_dir, read["BioSample"] + ".tab")) as mashFile:
+                    mashOut = mashFile.read().splitlines()
+            except:
+                try:
+                    with open(os.path.join(mash_dir, read["read_accession"] + ".tab")) as mashFile:
+                        mashOut = mashFile.read().splitlines()
+                except:
+                    with open(os.path.join(mash_dir, read["run_accession"] + ".tab")) as mashFile:
+                        mashOut = mashFile.read().splitlines()
+            mashOut.sort(key=lambda x: x.split("\t")[0], reverse=True)
+            mashOut = mashOut[:10]
+            for row in mashOut:
+                row = row.split("\t")
+                read["mashIdentity"] = row[0]
+                read["mashHashes"] = row[1]
+                read["mashSpecies"] = row[5]
+            return read
+
+        with open(os.path.join(input.assembly_metadata[0],"isolateAssemblyAttributes.json"), "r") as assemblyFile:
+            assembly_metadata = json.loads(assemblyFile.read())["information"]
+        # iterate through isolates and import match output
+        sys.stderr.write("\nAdding mash output to assemblies\n")
+        job_list = [
+                assembly_metadata[i:i + params.threads] for i in range(0, len(assembly_metadata), params.threads)
+            ]
+        updated_assembly_metadata = []
+        for job in tqdm(job_list):
+            updated_assembly_metadata += Parallel(n_jobs=params.threads)(delayed(appendMashAssemblies)(isolate,
+                                                                                                       input.mash_output[0]) for isolate in job)
+        with open(os.path.join(input.assembly_metadata[0], "isolateAssemblyAttributes.json"), "w") as assemblyOut:
+            assemblyOut.write(json.dumps({"information": updated_assembly_metadata}))
+        # iterate through isolates with reads
+        with open(os.path.join(input.ena_read_metadata, "isolateReadAttributes.json"), "r") as readFile:
+            ena_metadata = json.loads(readFile.read())["information"]
+        sys.stderr.write("\nAdding mash output to reads\n")
+        job_list = [
+                ena_metadata[i:i + params.threads] for i in range(0, len(ena_metadata), params.threads)
+            ]
+        updated_ena_metadata = []
+        for job in tqdm(job_list):
+            updated_ena_metadata += Parallel(n_jobs=params.threads)(delayed(appendMashReads)(read,
+                                                                                             input.mash_output[0]) for read in job)
+        with open(os.path.join(input.ena_read_metadata, "isolateReadAttributes.json"), "w") as readOut:
+            readOut.write(json.dumps({"information": updated_ena_metadata}))
 
 # build gene JSONS from GFF and sequence files
 rule extract_genes:
@@ -321,6 +420,7 @@ rule extract_genes:
         assemblyStatDir=rules.extract_assembly_stats.output,
         graphDir=rules.run_panaroo.output,
         merged_panaroo=rules.merge_panaroo.output,
+        mash_metadata=rules.supplement_isolate_metadata.output
     output:
         directory("extracted_genes")
     params:
@@ -328,8 +428,11 @@ rule extract_genes:
         threads=config['n_cpu'],
         index_name=config['index_sequences']['elasticSearchIndex'],
         run_type=config["run_type"]
-    shell:
-        'python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -m {input.assemblyStatDir} -g {input.graphDir} -i {params.index} -o {output} --threads {params.threads} --index-name {params.index_name} --prev-dir previous_run --run-type {params.run_type} --update'
+    run:
+        if os.path.exists("extracted_genes2"):
+            shell("mkdir {output} && cp extracted_genes2/* {output}")
+        else:
+            shell('python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -m {input.assemblyStatDir} -g {input.graphDir} -i {params.index} -o {output} --threads {params.threads} --index-name {params.index_name} --prev-dir previous_run --run-type {params.run_type} --update')
 
 # generate mafft alignments for panaroo output
 rule mafft_align:
@@ -376,7 +479,7 @@ rule merge_runs:
 rule index_gene_sequences:
     input:
         merged_runs=rules.merge_runs.output,
-        fake_input=rules.index_isolate_attributes.output,
+        indexed_isolates=rules.index_isolate_attributes.output,
     output:
         directory("indexed_genes")
     params:
@@ -422,6 +525,8 @@ rule run_pipeline:
         prodigal_output=rules.run_prodigal.output,
         indexed_gene_sequences=rules.index_gene_sequences.output,
         indexed_isolates=rules.index_isolate_attributes.output,
-        ena_metadata=rules.retrieve_ena_read_metadata.output.output_dir
+        ena_metadata=rules.retrieve_ena_read_metadata.output.output_dir,
+        mash_dir=rules.run_mash_screen.output,
+        supplemented_metadata=rules.supplement_isolate_metadata.output
     shell:
-        'rm -rf {input.ena_metadata} {input.retrieved_genomes} {input.indexed_isolates} {input.prodigal_output} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'
+        'rm -rf {input.supplemented_metadata} {input.mash_dir} {input.ena_metadata} {input.retrieved_genomes} {input.indexed_isolates} {input.prodigal_output} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'
