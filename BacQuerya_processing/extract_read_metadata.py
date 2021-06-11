@@ -8,10 +8,11 @@ from joblib import Parallel, delayed
 import json
 import os
 import requests
-from shutil import copyfileobj
+from shutil import copyfileobj, rmtree
 import ssl
 import subprocess
 import sys
+import tempfile
 from tqdm import tqdm
 from urllib.request import urlopen
 import xmltodict
@@ -126,7 +127,7 @@ def download_SRA_metadata(cleaned_accession,
     return failed_accessions
 
 def download_ENA_metadata(accession_dict,
-                          output_dir,
+                          temp_dir,
                           GPS,
                           GPS_metadataJSON,
                           assemblyURLs):
@@ -281,10 +282,12 @@ def main():
     else:
         assemblyURLs = None
     if args.read_source == "ena":
+        # need a tempdir to dowload the Blackwell assemblies
+        temp_dir = tempfile.mkdtemp(dir=args.output_dir)
         access_data = []
         for job in tqdm(job_list):
             access_data +=  Parallel(n_jobs=args.n_cpu)(delayed(download_ENA_metadata)(access,
-                                                                                       args.output_dir,
+                                                                                       temp_dir,
                                                                                        args.GPS,
                                                                                        GPS_metadataJSON,
                                                                                        assemblyURLs) for access in job)
@@ -316,6 +319,8 @@ def main():
         indexNoDict["isolateIndexNo"] = index_no
         with open(args.index_file, "w") as indexFile:
             indexFile.write(json.dumps(indexNoDict))
+        # remove temp dir
+        rmtree(temp_dir)
     if args.read_source == "sra":
         failed_accessions = []
         for job in tqdm(job_list):
