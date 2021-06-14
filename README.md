@@ -1,17 +1,17 @@
-# Table of Contents  
+# Table of Contents
 
-* [BacQuerya](#bacquerya)  
+* [BacQuerya](#bacquerya)
 * [BacQuerya-processing](#bacquerya-processing)
-* [Installation](#installation)  
-* [Snakemake pipeline](#snakemake-pipeline)  
-* [Local instances of BacQuerya](#local-instances-of-bacquerya)  
-* [Specifying elastic parameters and secrets](#specifying-elastic-parameters-and-secrets)  
+* [Installation](#installation)
+* [Snakemake pipeline](#snakemake-pipeline)
+* [Local instances of BacQuerya](#local-instances-of-bacquerya)
+* [Specifying elastic parameters and secrets](#specifying-elastic-parameters-and-secrets)
 * [Contributors](#contributors)
 
 
 # BacQuerya
 
-BacQuerya is a search engine that aims to consolidate and present all publicly available genomic metadata for bacterial pathogens. BacQuerya is currently in beta and as such, is unstable in some circumstances and only houses *S. pneumoniae* genomic metadata at this time. 
+BacQuerya is a search engine that aims to consolidate and present all publicly available genomic metadata for bacterial pathogens. BacQuerya is currently in beta and as such, is unstable in some circumstances and only houses *S. pneumoniae* genomic metadata at this time.
 
 # BacQuerya-processing
 
@@ -240,6 +240,20 @@ bin\elasticsearch.bat
 * on macOS/Linux
 ```
 bin/elasticsearch
+```
+
+## Running the redis server
+
+Redis is a locally- or server-hosted No-SQL data storage tool. Unlike elasticsearch, it only allows string records to be retrieved by specifying the exact key but can generally support a larger quantity of data per document. We use Redis to supplement the information available in our elastic indices with additional metadata we do not need to search through when users submit a query on the BacQuerya website. Redis can be installed and configured with the following commands:
+```
+wget http://download.redis.io/redis-stable.tar.gz
+tar xvzf redis-stable.tar.gz
+cd redis-stable
+make
+```
+The Redis server can be started with:
+```
+redis-server
 ```
 
 # Specifying elastic parameters and secrets
