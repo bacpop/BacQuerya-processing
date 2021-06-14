@@ -182,13 +182,20 @@ def update_panaroo_outputs(G,
     del G
     # update gene_data.csv
     sys.stderr.write('\nUpdating all gene_data.csv file\n')
-    for index, row in gene_data.iterrows():
-        new_annotations = cluster_name_dict[row["clustering_id"]]
-        gene_data["gene_name"][index] = new_annotations["name"]
-        gene_data["description"][index] = new_annotations["description"]
+    name_column = []
+    description_column = []
+    for row in tqdm(gene_data.itertuples()):
+        if row[3] in cluster_name_dict:
+            new_annotations = cluster_name_dict[row[3]]
+            name_column.append(new_annotations["name"])
+            description_column.append(new_annotations["description"])
+        else:
+            name_column.append(row[7])
+            description_column.append(row[8])
+    gene_data["gene_name"] = name_column
+    gene_data["description"] = description_column
     gene_data.to_csv(os.path.join(graph_dir, "gene_data.csv"), index=False)
     del gene_data
-    del gene_data_dict
     # update gene_presence_absence.csv and gene_presence_absence.rtab
     sys.stderr.write('\nUpdating gene_presence_absence files\n')
     gene_presence_absence = pd.read_csv(os.path.join(graph_dir, "gene_presence_absence.csv"))
@@ -196,21 +203,22 @@ def update_panaroo_outputs(G,
     updated_cog_dict = {}
     for name in tqdm(range(len(panarooNames))):
         # update csv file
-        annotation_row_index = list(gene_presence_absence["Gene"]).index(panarooNames[name])
-        non_unique = ";".join(updatedPanarooNames[name].split("~~~"))
-        gene_presence_absence["Gene"][annotation_row_index] = updatedPanarooNames[name]
-        gene_presence_absence["Non-unique Gene name"][annotation_row_index] = non_unique
-        gene_presence_absence["Annotation"][annotation_row_index] = updatedDescriptions[name]
-        # update roary csv file
-        roary_row_index = list(roary_presence_absence["Gene"]).index(panarooNames[name])
-        roary_presence_absence["Gene"][roary_row_index] = updatedPanarooNames[name]
-        roary_presence_absence["Non-unique Gene name"][roary_row_index] = non_unique
-        roary_presence_absence["Annotation"][roary_row_index] = updatedDescriptions[name]
-        updated_cog_dict.update({panarooNames[name]: updatedPanarooNames[name]})
+        if panarooNames[name] in list(gene_presence_absence["Gene"]):
+            annotation_row_index = list(gene_presence_absence["Gene"]).index(panarooNames[name])
+            non_unique = ";".join(updatedPanarooNames[name].split("~~~"))
+            gene_presence_absence["Gene"][annotation_row_index] = updatedPanarooNames[name]
+            gene_presence_absence["Non-unique Gene name"][annotation_row_index] = non_unique
+            gene_presence_absence["Annotation"][annotation_row_index] = updatedDescriptions[name]
+            # update roary csv file
+            roary_row_index = list(roary_presence_absence["Gene"]).index(panarooNames[name])
+            roary_presence_absence["Gene"][roary_row_index] = updatedPanarooNames[name]
+            roary_presence_absence["Non-unique Gene name"][roary_row_index] = non_unique
+            roary_presence_absence["Annotation"][roary_row_index] = updatedDescriptions[name]
+    updated_cog_dict.update({panarooNames[name]: updatedPanarooNames[name]})
     sys.stderr.write("\nWriting csv files\n")
     gene_presence_absence.to_csv(os.path.join(graph_dir, "gene_presence_absence.csv"), index=False)
-    roary_presence_absence.to_csv(os.path.join(graph_dir, "gene_presence_absence_roary.csv"), index=False)
     del gene_presence_absence
+    roary_presence_absence.to_csv(os.path.join(graph_dir, "gene_presence_absence_roary.csv"), index=False)
     del roary_presence_absence
     sys.stderr.write('\nUpdating gene_presence_absence.Rtab\n')
     with open(os.path.join(graph_dir, "gene_presence_absence.Rtab"), "r") as inRtab:
@@ -349,7 +357,7 @@ def generate_reference_library(graph_dir,
                 panarooDescription = ["Hypothetical protein"]
                 try:
                     pfamResult = searchPfam(y["protein"].split(";")[0])
-                except requests.exceptions.ConnectionError:
+                except: #requests.exceptions.ConnectionError:
                     sys.stderr.write("\nHmmscan is not available at this time\n")
                     pfamResult = None
                 if pfamResult:

@@ -7,13 +7,17 @@ from Bio import Entrez
 from joblib import Parallel, delayed
 import json
 import os
-import sys
-import subprocess
-from tqdm import tqdm
 import requests
+from shutil import copyfileobj, rmtree
+import ssl
+import subprocess
+import sys
+import tempfile
+from tqdm import tqdm
+from urllib.request import urlopen
 import xmltodict
 
-from BacQuerya_processing.extract_assembly_stats import get_biosample_metadata
+from BacQuerya_processing.extract_assembly_stats import get_biosample_metadata, calculate_assembly_stats
 from BacQuerya_processing.secrets import ENTREZ_API_KEY
 
 def get_options():
@@ -74,9 +78,9 @@ def get_options():
                         type=int)
     io_opts.add_argument("--GPS",
                         dest="GPS",
-                        required=True,
-                        help="if we are indexing GPS data or not",
-                        type=bool)
+                        required=False,
+                        help="specify if we are indexing GPS data",
+                        action='store_true')
     io_opts.add_argument("--GPS-metdata",
                         dest="GPS_metadataJSON",
                         required=False,
@@ -123,7 +127,7 @@ def download_SRA_metadata(cleaned_accession,
     return failed_accessions
 
 def download_ENA_metadata(accession_dict,
-                          output_dir,
+                          temp_dir,
                           GPS,
                           GPS_metadataJSON,
                           assemblyURLs):
@@ -153,6 +157,7 @@ def download_ENA_metadata(accession_dict,
         accession_metadata = accession_metadata["SAMPLE_SET"]
         # extract biodsample id for isolate
         biosample_id = accession_metadata["SAMPLE"]["IDENTIFIERS"]["EXTERNAL_ID"]["#text"]
+        assembly_stats = False
         for link in accession_metadata["SAMPLE"]["SAMPLE_LINKS"]["SAMPLE_LINK"]:
             if link["XREF_LINK"]["DB"] == "ENA-RUN":
                 run_accession = link["XREF_LINK"]["ID"]
@@ -164,7 +169,22 @@ def download_ENA_metadata(accession_dict,
                 # if an assembly is available in the ENA, add the link to the sequence links
                 if assemblyURLs:
                     if biosample_id in assemblyURLs:
-                        fastqLinks.append(assemblyURLs[biosample_id])
+                        # if a Blackwell assembly is available, we need to retrieve it and calculate assembly statistics
+                        genome_representation = "full"
+                        assemblyLink = assemblyURLs[biosample_id]
+                        # download the assembly file and save too a temp directory
+                        ssl._create_default_https_context = ssl._create_unverified_context
+                        assemblyFile = os.path.join(temp_dir, os.path.basename(assemblyLink))
+                        with urlopen(assemblyLink) as in_stream, open(assemblyFile, 'wb') as out_file:
+                            copyfileobj(in_stream, out_file)
+                        # unzip the assembly file
+                        subprocess.run("gunzip " + assemblyFile, shell=True, check=True)
+                        # calculate assembly statistics
+                        contig_stats, scaffold_stats = calculate_assembly_stats(assemblyFile)
+                        assembly_stats = True
+                        fastqLinks.append(assemblyLink)
+                    else:
+                        genome_representation = "reads"
                 accession_metadata.update({"ENA-FASTQ-FILES" : fastqLinks})
         for attribute in accession_metadata["SAMPLE"]["SAMPLE_ATTRIBUTES"]["SAMPLE_ATTRIBUTE"]:
             if attribute["TAG"] == "ENA-FIRST-PUBLIC":
@@ -189,7 +209,7 @@ def download_ENA_metadata(accession_dict,
                     "read_accession" : cleaned_accession,
                     "isolate_index" : index_no,
                     "Submitter" : submitter,
-                    "Genome_representation" : "reads",
+                    "Genome_representation" : genome_representation,
                     "SubmissionDate" : submission_date,
                     "Organism_name" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["SCIENTIFIC_NAME"],
                     "Taxid" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["TAXON_ID"],
@@ -199,6 +219,10 @@ def download_ENA_metadata(accession_dict,
                     "allAttributes" : json.dumps(accession_metadata["SAMPLE"])}
         if GPS:
             metadata.update(GPS_metadata)
+        # add assembly stats to isolate metadata if it is defined
+        if assembly_stats:
+            metadata["contig_stats"] = contig_stats
+            metadata["scaffold_stats"] = scaffold_stats
         # output isolate: index pairs
         indexIsolatePair = {isolateName: index_no}
         if not run_accession == "":
@@ -258,10 +282,12 @@ def main():
     else:
         assemblyURLs = None
     if args.read_source == "ena":
+        # need a tempdir to dowload the Blackwell assemblies
+        temp_dir = tempfile.mkdtemp(dir=args.output_dir)
         access_data = []
         for job in tqdm(job_list):
             access_data +=  Parallel(n_jobs=args.n_cpu)(delayed(download_ENA_metadata)(access,
-                                                                                       args.output_dir,
+                                                                                       temp_dir,
                                                                                        args.GPS,
                                                                                        GPS_metadataJSON,
                                                                                        assemblyURLs) for access in job)
@@ -278,7 +304,8 @@ def main():
         #### need to get assembly accessions too if they are present for the GPS data
         for metadata_line in tqdm(metadata):
             biosample_metadata = get_biosample_metadata(metadata_line["BioSample"], args.email)
-            metadata_line.update(biosample_metadata)
+            if biosample_metadata:
+                metadata_line.update(biosample_metadata)
         # write out list of run accessions
         with open(os.path.join(args.output_dir, "fastq_links.txt"), "w") as r:
             r.write("\n".join(fastq_links))
@@ -292,6 +319,8 @@ def main():
         indexNoDict["isolateIndexNo"] = index_no
         with open(args.index_file, "w") as indexFile:
             indexFile.write(json.dumps(indexNoDict))
+        # remove temp dir
+        rmtree(temp_dir)
     if args.read_source == "sra":
         failed_accessions = []
         for job in tqdm(job_list):

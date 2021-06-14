@@ -27,3 +27,4 @@ dependencies:
   - panaroo
   - cd-hit
   - mafft
+  # - mash https://github.com/marbl/Mash

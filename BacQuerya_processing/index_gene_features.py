@@ -1,6 +1,5 @@
 """
 Build a searcheable COBS index from the output of extract_genes
-- cannot index genes without indices because they are not in panaroo graph
 """
 import cobs_index as cobs
 from elasticsearch import Elasticsearch
@@ -10,12 +9,13 @@ import json
 import networkx as nx
 import os
 import re
+import redis
 import shutil
 import sys
 from tqdm import tqdm
 import tempfile
 
-from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY
+from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY, REDIS_HOST, REDIS_PORT, REDIS_PASSWORD
 
 def get_options():
 
@@ -93,20 +93,40 @@ def get_options():
 
 def elasticsearch_isolates(allIsolatesJson,
                            index_name):
-    # rate of indexing decreases substantially after about 1500 items
+    """Function to index gene metadata. Gene annotations are index using elastic and a list of isolates containing each gene is stored in a redis database"""
+    # rate of indexing with elastic decreases substantially after about 1500 items
     partioned_items = [
         list(allIsolatesJson.keys())[i:i + 1500] for i in range(0, len(allIsolatesJson.keys()), 1500)
         ]
     sys.stderr.write('\nIndexing CDS features\n')
     for keys in tqdm(partioned_items):
-        client = Elasticsearch([ELASTIC_API_URL],
+        elastic_client = Elasticsearch([ELASTIC_API_URL],
                                 api_key=(ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY))
+        redis_client = redis.StrictRedis(host=REDIS_HOST,
+                                         port=REDIS_PORT,
+                                         password=REDIS_PASSWORD,
+                                         decode_responses=True)
         # iterate through features
         for line in tqdm(keys):
-            response = client.index(index = index_name,
-                                    id = int(line),
-                                    body = allIsolatesJson[line],
-                                    request_timeout=60)
+            isolate_labels = allIsolatesJson[line]["foundIn_labels"]
+            isolate_indices = allIsolatesJson[line]["foundIn_indices"]
+            isolate_biosamples = allIsolatesJson[line]["foundIn_biosamples"]
+            isolate_annotationIDs = allIsolatesJson[line]["member_annotation_ids"]
+            # delete isolates from the gene metadata to reduce elastic entry size
+            del allIsolatesJson[line]["foundIn_labels"]
+            del allIsolatesJson[line]["foundIn_indices"]
+            del allIsolatesJson[line]["foundIn_biosamples"]
+            del allIsolatesJson[line]["member_annotation_ids"]
+            response = elastic_client.index(index = index_name,
+                                            id = int(line),
+                                            body = allIsolatesJson[line],
+                                            request_timeout=60)
+            # store a list of isolates containing the gene in a redis db
+            redis_dict = {"foundIn_labels": isolate_labels,
+                          "foundIn_indices": isolate_indices,
+                          "foundIn_biosamples": isolate_biosamples,
+                          "member_annotation_ids": isolate_annotationIDs}
+            redis_client.set(int(line), json.dumps(redis_dict))
 
 def write_gene_files(gene_dict, temp_dir):
     """Write gene sequences to individual files with index as filename"""
