@@ -75,6 +75,7 @@ def main():
             enaJSON = json.loads(enaString)
             doc_list += enaJSON["information"]
     seen_indices = []
+    failed = []
     for line in tqdm(doc_list):
         try:
             seen_indices.append(str(line["isolate_index"]))
@@ -83,13 +84,21 @@ def main():
                     if math.isnan(value):
                         line[attr] = "NA"
             # ensure year and N50 are mapped as integers
-            line["Year"] = int(line["Year"])
-            line["contig_stats"]["N50"] = int(line["contig_stats"]["N50"])
+            if "Year" in line.keys():
+                if line["Year"] == "missing":
+                    del line["Year"]
+                else:
+                    line["Year"] = int(line["Year"])
+            if "contig_stats" in line.keys():
+                line["contig_stats"]["N50"] = int(line["contig_stats"]["N50"])
             response = client.index(index = args.index,
                                     id = line["isolate_index"],
                                     body = line)
         except:
             sys.stderr.write('\nIssue indexing isolate: ' + line['isolateName'] + '\n')
+            failed.append(line['isolateName'])
     with open("ISOLATE_SEEN_INDICES.txt", "w") as seen:
         seen.write("\n".join(seen_indices))
+    with open("ISOLATE_INDEXING_FAILED.txt", "w") as failed:
+        failed.write("\n".join(failed))
     sys.exit(0)

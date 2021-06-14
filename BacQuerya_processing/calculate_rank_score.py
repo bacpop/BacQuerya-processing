@@ -32,10 +32,12 @@ def get_options():
 
 def calculate_sdi(hashDict):
     """Calculate simpsons diversity index of the sample"""
-    total = sum(hashDict.values())
+    hashCounts = hashDict.values()
+    hashCounts = [int(x.split("/")[0]) for x in hashCounts]
+    total = sum(hashCounts)
     sdi = 0
     for count in hashDict.values():
-        abundance = count/total
+        abundance = int(count.split("/")[0])/total
         sdi += abundance ** 2
     return 1 - sdi
 
@@ -44,7 +46,7 @@ def assess_contamination(hashDict, genus):
     sdi = calculate_sdi(hashDict)
     contaminated = False
     for species, hashes in hashDict.items():
-        if hashes > 10 and not species.split(" ")[1].lower() == genus:
+        if int(hashes.split("/")[0]) > 10 and not species.split(" ")[2].lower() == genus:
             contaminated = True
     if sdi > 0.2 or contaminated:
         return -10
@@ -70,7 +72,7 @@ def caculate_score(isolate, GC_lower, GC_upper, length_lower, length_upper):
     if isolate["Genome_representation"] == "full":
         score += 10
         # add 100 if 1 contig
-        if int(isolate["contig_stats"]["contig_count"]) == 1:
+        if int(isolate["contig_stats"]["sequence_count"]) == 1:
             score += 100
         # adjust score if assembly statistics show the isolate is an outlier
         if float(isolate["contig_stats"]["gc_content"]) > GC_upper or float(isolate["contig_stats"]["gc_content"]) < GC_lower:
@@ -94,11 +96,14 @@ def main():
         assemblies = json.loads(assemblyMeta.read())["information"]
     with open(args.reads, "r") as readMeta:
         reads = json.loads(readMeta.read())["information"]
+    assemblies = [assem for assem in assemblies if assem is not None]
+    reads = [r for r in reads if r is not None]
     metadata = assemblies + reads
     # calculate population wide IQR for GC content and length
     GC_proportions  = []
     lengths = []
-    for isolate_row in metadata:
+    sys.stderr.write("\nCalculating assembly statistic ranges\n")
+    for isolate_row in tqdm(metadata):
         if isolate_row["Genome_representation"] == "full":
             GC_proportions.append(isolate_row["contig_stats"]["gc_content"])
             lengths.append(isolate_row["contig_stats"]["total_bps"])
@@ -111,6 +116,7 @@ def main():
     # parallelise calculation of the rank score for assemblies
     job_list = [assemblies[i:i + args.n_cpu] for i in range(0, len(assemblies), args.n_cpu)]
     assembliesScored = []
+    sys.stderr.write("\nCalculating assembly scores\n")
     for job in tqdm(job_list):
         assembliesScored += Parallel(n_jobs=args.n_cpu)(delayed(caculate_score)(metaLine,
                                                                                 GC_lower,
@@ -122,6 +128,7 @@ def main():
     # parallelise calculation of the rank score for reads
     job_list = [reads[i:i + args.n_cpu] for i in range(0, len(reads), args.n_cpu)]
     readsScored = []
+    sys.stderr.write("\nCalculating read scores\n")
     for job in tqdm(job_list):
         readsScored += Parallel(n_jobs=args.n_cpu)(delayed(caculate_score)(metaLine,
                                                                            GC_lower,

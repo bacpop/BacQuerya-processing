@@ -20,9 +20,12 @@ rule retrieve_assembly_stats:
     params:
         email=config['extract_entrez_information']['email'],
         attribute=config['extract_entrez_information']['assembly'],
-        threads=config['n_cpu']
+        threads=config['n_cpu'],
+        GPS=config['GPS']
     run:
         shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
+        if params.GPS == True:
+            shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
 
 # retrieve isolate-GFFS
 rule retrieve_annotations:
@@ -33,9 +36,12 @@ rule retrieve_annotations:
     params:
         email=config['extract_entrez_information']['email'],
         attribute=config['extract_entrez_information']['gff'],
-        threads=config['n_cpu']
+        threads=config['n_cpu'],
+        GPS=config['GPS']
     run:
         shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
+        if params.GPS == True:
+            shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
 
 # gunzip annotation files
 rule unzip_annotations:
@@ -55,9 +61,12 @@ rule retrieve_genomes:
     params:
         email=config['extract_entrez_information']['email'],
         attribute=config['extract_entrez_information']['genome'],
-        threads=config['n_cpu']
+        threads=config['n_cpu'],
+        GPS=config['GPS']
     run:
         shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
+        if params.GPS == True:
+            shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
 
 # retrieve raw reads using SRA toolkit
 rule retrieve_sra_reads:
@@ -209,12 +218,15 @@ rule run_panaroo:
         rules.reformat_annotations.output
     params:
         threads=config["n_cpu"],
-        run_type=config["run_type"]
+        run_type=config["run_type"],
+        GPS=config['GPS']
     output:
         directory("panaroo_output")
     run:
-        if os.path.exists("panaroo_output2"):
+        if os.path.exists("panaroo_output2") and not params.GPS:
             shell("mkdir {output} && cp panaroo_output2/* {output}")
+        elif params.GPS:
+            shell("mkdir {output} && cp panaroo_gps/* {output}")
         else:
             if params.run_type == "reference":
                 num_annotations = len(glob.glob(os.path.join(input[0], "*.gff")))
@@ -232,12 +244,13 @@ rule merge_panaroo:
         annotation_dir=rules.reformat_annotations.output
     params:
         threads=config['n_cpu'],
-        run_type=config["run_type"]
+        run_type=config["run_type"],
+        GPS=config['GPS']
     output:
         touch("merge_panaroo.done")
     run:
         annotation_files = glob.glob(os.path.join(input.annotation_dir[0], "*.gff"))
-        if params.run_type == "reference":
+        if not params.GPS and params.run_type == "reference":
             if len(annotation_files) > 1:
                 if os.path.exists("previous_run"):
                     shell("mkdir merged_panaroo_output && panaroo-merge -d {input.current_output} previous_run/panaroo_output -o merged_panaroo_output -t {params.threads} && cp -rf merged_panaroo_output/* panaroo_output && rm -rf merged_panaroo_output")
@@ -256,8 +269,10 @@ rule extract_assembly_stats:
         index=config['extract_assembly_stats']['index_file'],
         threads=config['n_cpu'],
         email=config['extract_entrez_information']['email'],
+        GPS=config["GPS"],
+        GPS_JSON=config["GPS_metadataJSON"]
     run:
-        shell('python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output} -e {params.email} --previous-run previous_run --threads {params.threads}')
+        shell('python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output} -e {params.email} --previous-run previous_run --threads {params.threads} --GPS {params.GPS} --GPS-metdata {params.GPS_JSON}')
 
 
 # retrieve ena read metadata
@@ -273,12 +288,14 @@ rule retrieve_ena_read_metadata:
         index=config['extract_assembly_stats']['index_file'],
         email=config['extract_entrez_information']['email'],
         threads=config['n_cpu'],
-        GPS=False
+        GPS=config["GPS"],
+        GPS_JSON=config["GPS_metadataJSON"],
+        assemblyURLs="661K_biosampleAssemblyURLs.json"
     run:
         if os.path.exists("retrieved_ena_read_metadata2"):
             shell("mkdir {output} && cp retrieved_ena_read_metadata2/* {output}")
         else:
-            shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir}')
+            shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --GPS {params.GPS} --GPS-metdata {params.GPS_JSON} --assembly-url {params.assemblyURLs}')
 
 # retrieve raw reads from ENA
 rule retrieve_ena_reads:
@@ -328,16 +345,19 @@ rule run_mash_screen:
             shell_command = "./mash screen -w -p 3 refseq.genomes.k21s1000.msh " + sequenceFile + " > " + os.path.join(output_dir, os.path.splitext(os.path.basename(sequenceFile))[0]) + ".tab"
             subprocess.run(shell_command, shell=True, check=True)
 
-        reads = glob.glob(os.path.join(input.read_dir[0], "*"))
-        assemblies = glob.glob(os.path.join(input.assembly_dir[0], "*"))
-        genomes = assemblies + reads
-        os.mkdir(output[0])
-        job_list = [
-                genomes[i:i + params.threads] for i in range(0, len(genomes), params.threads)
-            ]
-        for job in tqdm(job_list):
-            Parallel(n_jobs=params.threads)(delayed(run_mash)(sequence,
-                                                              output[0]) for sequence in job)
+        if os.path.exists("mash_results2"):
+            shell("mkdir {output} && cp mash_results2/* {output}")
+        else:
+            reads = glob.glob(os.path.join(input.read_dir[0], "*"))
+            assemblies = glob.glob(os.path.join(input.assembly_dir[0], "*"))
+            genomes = assemblies + reads
+            os.mkdir(output[0])
+            job_list = [
+                    genomes[i:i + params.threads] for i in range(0, len(genomes), params.threads)
+                ]
+            for job in tqdm(job_list):
+                Parallel(n_jobs=params.threads)(delayed(run_mash)(sequence,
+                                                                output[0]) for sequence in job)
 
 # supplement isolate metadata with the mash screen output
 rule supplement_isolate_metadata:
@@ -374,15 +394,18 @@ rule supplement_isolate_metadata:
         def appendMashReads(read, mash_dir):
             """Add mash output to assembly metadata"""
             try:
-                with open(os.path.join(mash_dir, read["BioSample"] + ".tab")) as mashFile:
+                with open(os.path.join(mash_dir, read["BioSample"] + ".contigs.fa.tab")) as mashFile:
                     mashOut = mashFile.read().splitlines()
             except:
                 try:
                     with open(os.path.join(mash_dir, read["read_accession"] + ".tab")) as mashFile:
                         mashOut = mashFile.read().splitlines()
                 except:
-                    with open(os.path.join(mash_dir, read["run_accession"] + ".tab")) as mashFile:
-                        mashOut = mashFile.read().splitlines()
+                    try:
+                        with open(os.path.join(mash_dir, read["run_accession"] + ".tab")) as mashFile:
+                            mashOut = mashFile.read().splitlines()
+                    except:
+                        return None
             mashOut.sort(key=lambda x: x.split("\t")[0], reverse=True)
             mashIdentity = []
             mashHashes = []
@@ -448,6 +471,19 @@ rule extract_genes:
         else:
             shell('python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -m {input.assemblyStatDir} -g {input.graphDir} -i {params.index} -o {output} --threads {params.threads} --index-name {params.index_name} --prev-dir previous_run --run-type {params.run_type} --update')
 
+# calculate score for isolates based on available metadata
+rule calculate_score:
+    input:
+        assembly_metadata=rules.extract_assembly_stats.output,
+        read_metadata=rules.retrieve_ena_read_metadata.output.isolateJSON,
+        mash_metadata=rules.supplement_isolate_metadata.output
+    output:
+        touch("calculate_score.done")
+    params:
+        threads=config['n_cpu']
+    shell:
+        "python calculate_rank_score-runner.py --assembly-metadata {input.assembly_metadata}/isolateAssemblyAttributes.json --read-metadata {input.read_metadata} --threads {params.threads}"
+
 # generate mafft alignments for panaroo output
 rule mafft_align:
     input:
@@ -466,7 +502,8 @@ rule index_isolate_attributes:
     input:
         assemblyStatDir=rules.extract_assembly_stats.output,
         feature_file=rules.extract_genes.output,
-        ena_metadata=rules.retrieve_ena_read_metadata.output.output_dir
+        ena_metadata=rules.retrieve_ena_read_metadata.output.output_dir,
+        scored=rules.calculate_score.output
     params:
         index=config['index_isolate_attributes']['index'],
     output:
@@ -541,6 +578,7 @@ rule run_pipeline:
         indexed_isolates=rules.index_isolate_attributes.output,
         ena_metadata=rules.retrieve_ena_read_metadata.output.output_dir,
         mash_dir=rules.run_mash_screen.output,
-        supplemented_metadata=rules.supplement_isolate_metadata.output
+        supplemented_metadata=rules.supplement_isolate_metadata.output,
+        scored=rules.calculate_score.output
     shell:
-        'rm -rf {input.supplemented_metadata} {input.mash_dir} {input.ena_metadata} {input.retrieved_genomes} {input.indexed_isolates} {input.prodigal_output} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'
+        'rm -rf {input.scored} {input.supplemented_metadata} {input.mash_dir} {input.ena_metadata} {input.retrieved_genomes} {input.indexed_isolates} {input.prodigal_output} {input.aligned_genes} {input.retrieved_assembly_stats} {input.unzippedAnnotations} {input.retrieved_annotations} {input.unzipped_genomes} {input.mergeRuns} {input.panarooOutput} {input.extractedGeneMetadata} {input.ncbiAssemblyStatDir} {input.reformattedAnnotations} {input.merged_panaroo}'

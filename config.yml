@@ -8,6 +8,10 @@ run_type: reference
 # needed for a "reference" run. Tells snakemake to add gene information merged together from all runs to the elastic gene index
 index_genes: False
 
+# whether we are indexing the GPS data or not
+GPS: True
+GPS_metadataJSON: GPS_metadata.json
+
 # multiprocessing option
 n_cpu: 3
 
