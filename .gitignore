@@ -148,6 +148,9 @@ genome_browser/
 BacQuerya_processing/secrets.py
 BacQuerya_processing/secrets_public.py
 
+# databases
+databases/
+
 # Snakemake outputs
 .snakemake
 index_isolates.done

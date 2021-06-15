@@ -9,13 +9,13 @@ import json
 import networkx as nx
 import os
 import re
-import redis
 import shutil
+import sqlite3
 import sys
 from tqdm import tqdm
 import tempfile
 
-from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY, REDIS_HOST, REDIS_PORT, REDIS_PASSWORD
+from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY, GENE_DB
 
 def get_options():
 
@@ -99,13 +99,14 @@ def elasticsearch_isolates(allIsolatesJson,
         list(allIsolatesJson.keys())[i:i + 1500] for i in range(0, len(allIsolatesJson.keys()), 1500)
         ]
     sys.stderr.write('\nIndexing CDS features\n')
+    sqlite_connection = sqlite3.connect(GENE_DB)
+    sqlite_connection.execute('''CREATE TABLE GENE_METADATA
+         (ID INT PRIMARY KEY     NOT NULL,
+          METADATA           TEXT    NOT NULL);''')
+    sys.stderr.write('\nOpened the gene DB successfully\n')
     for keys in tqdm(partioned_items):
         elastic_client = Elasticsearch([ELASTIC_API_URL],
                                 api_key=(ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY))
-        redis_client = redis.StrictRedis(host=REDIS_HOST,
-                                         port=REDIS_PORT,
-                                         password=REDIS_PASSWORD,
-                                         decode_responses=True)
         # iterate through features
         for line in tqdm(keys):
             isolate_labels = allIsolatesJson[line]["foundIn_labels"]
@@ -122,11 +123,16 @@ def elasticsearch_isolates(allIsolatesJson,
                                             body = allIsolatesJson[line],
                                             request_timeout=60)
             # store a list of isolates containing the gene in a redis db
-            redis_dict = {"foundIn_labels": isolate_labels,
+            MetadataJSON = json.dumps({"foundIn_labels": isolate_labels,
                           "foundIn_indices": isolate_indices,
                           "foundIn_biosamples": isolate_biosamples,
-                          "member_annotation_ids": isolate_annotationIDs}
-            redis_client.set(int(line), json.dumps(redis_dict))
+                          "member_annotation_ids": isolate_annotationIDs})
+            db_command = "INSERT INTO GENE_METADATA (ID,METADATA) \
+                VALUES (" + str(line) + ", '" + MetadataJSON + "')"
+            sqlite_connection.execute(db_command)
+    sqlite_connection.commit()
+    sqlite_connection.close()
+    sys.stderr.write('\nGene metadata was indexed successfully\n')
 
 def write_gene_files(gene_dict, temp_dir):
     """Write gene sequences to individual files with index as filename"""
