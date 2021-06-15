@@ -100,9 +100,9 @@ def elasticsearch_isolates(allIsolatesJson,
         ]
     sys.stderr.write('\nIndexing CDS features\n')
     sqlite_connection = sqlite3.connect(GENE_DB)
-    sqlite_connection.execute('''CREATE TABLE GENE_METADATA
-         (ID INT PRIMARY KEY     NOT NULL,
-          METADATA           TEXT    NOT NULL);''')
+    #sqlite_connection.execute('''CREATE TABLE GENE_METADATA
+         #(ID INT PRIMARY KEY     NOT NULL,
+          #METADATA           TEXT    NOT NULL);''')
     sys.stderr.write('\nOpened the gene DB successfully\n')
     for keys in tqdm(partioned_items):
         elastic_client = Elasticsearch([ELASTIC_API_URL],
@@ -126,7 +126,7 @@ def elasticsearch_isolates(allIsolatesJson,
             MetadataJSON = json.dumps({"foundIn_labels": isolate_labels,
                           "foundIn_indices": isolate_indices,
                           "foundIn_biosamples": isolate_biosamples,
-                          "member_annotation_ids": isolate_annotationIDs})
+                          "member_annotation_ids": isolate_annotationIDs}).replace("/", "")
             db_command = "INSERT INTO GENE_METADATA (ID,METADATA) \
                 VALUES (" + str(line) + ", '" + MetadataJSON + "')"
             sqlite_connection.execute(db_command)
