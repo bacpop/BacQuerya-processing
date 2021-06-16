@@ -1,21 +1,21 @@
 """
 Build a searcheable COBS index from the output of extract_genes
 """
-import cobs_index as cobs
+#import cobs_index as cobs
 from elasticsearch import Elasticsearch
 import glob
 from joblib import Parallel, delayed
 import json
 import networkx as nx
 import os
+import pyodbc
 import re
 import shutil
-import sqlite3
 import sys
 from tqdm import tqdm
 import tempfile
 
-from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY, GENE_DB
+from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY, SQL_SERVER, SQL_DB, SQL_USERNAME, SQL_PASSWORD, SQL_DRIVER
 
 def get_options():
 
@@ -99,11 +99,12 @@ def elasticsearch_isolates(allIsolatesJson,
         list(allIsolatesJson.keys())[i:i + 1500] for i in range(0, len(allIsolatesJson.keys()), 1500)
         ]
     sys.stderr.write('\nIndexing CDS features\n')
-    sqlite_connection = sqlite3.connect(GENE_DB)
-    #sqlite_connection.execute('''CREATE TABLE GENE_METADATA
-         #(ID INT PRIMARY KEY     NOT NULL,
-          #METADATA           TEXT    NOT NULL);''')
-    sys.stderr.write('\nOpened the gene DB successfully\n')
+    #with pyodbc.connect('DRIVER='+SQL_DRIVER+';SERVER='+SQL_SERVER+';PORT=1433;DATABASE='+SQL_DB+';UID='+SQL_USERNAME+';PWD='+ SQL_PASSWORD) as conn:
+        #with conn.cursor() as cursor:
+           # cursor.execute('''CREATE TABLE GENE_METADATA
+              #  (ID INT PRIMARY KEY     NOT NULL,
+              #   METADATA           TEXT    NOT NULL);''')
+   # sys.stderr.write('\nOpened the gene DB successfully\n')
     for keys in tqdm(partioned_items):
         elastic_client = Elasticsearch([ELASTIC_API_URL],
                                 api_key=(ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY))
@@ -127,11 +128,11 @@ def elasticsearch_isolates(allIsolatesJson,
                           "foundIn_indices": isolate_indices,
                           "foundIn_biosamples": isolate_biosamples,
                           "member_annotation_ids": isolate_annotationIDs}).replace("/", "")
-            db_command = "INSERT INTO GENE_METADATA (ID,METADATA) \
-                VALUES (" + str(line) + ", '" + MetadataJSON + "')"
-            sqlite_connection.execute(db_command)
-    sqlite_connection.commit()
-    sqlite_connection.close()
+            with pyodbc.connect('DRIVER='+SQL_DRIVER+';SERVER='+SQL_SERVER+';PORT=1433;DATABASE='+SQL_DB+';UID='+SQL_USERNAME+';PWD='+ SQL_PASSWORD) as conn:
+                with conn.cursor() as cursor:
+                    db_command = "INSERT INTO GENE_METADATA (ID,METADATA) \
+                        VALUES (" + str(line) + ", '" + MetadataJSON + "')"
+                    cursor.execute(db_command)
     sys.stderr.write('\nGene metadata was indexed successfully\n')
 
 def write_gene_files(gene_dict, temp_dir):

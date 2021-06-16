@@ -272,8 +272,10 @@ rule extract_assembly_stats:
         GPS=config["GPS"],
         GPS_JSON=config["GPS_metadataJSON"]
     run:
-        shell('python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output} -e {params.email} --previous-run previous_run --threads {params.threads} --GPS {params.GPS} --GPS-metdata {params.GPS_JSON}')
-
+        if params.GPS:
+            shell('python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output} -e {params.email} --previous-run previous_run --threads {params.threads} --GPS --GPS-metdata {params.GPS_JSON}')
+        else:
+            shell('python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output} -e {params.email} --previous-run previous_run --threads {params.threads}')
 
 # retrieve ena read metadata
 rule retrieve_ena_read_metadata:
