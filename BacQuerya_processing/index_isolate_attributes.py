@@ -7,10 +7,11 @@ from elasticsearch import Elasticsearch
 import json
 import math
 import os
+import pyodbc
 import sys
 from tqdm import tqdm
 
-from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_ISOLATE_API_ID, ELASTIC_ISOLATE_API_KEY
+from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_ISOLATE_API_ID, ELASTIC_ISOLATE_API_KEY, SQL_CONNECTION_STRING
 
 def get_options():
 
@@ -76,27 +77,40 @@ def main():
             doc_list += enaJSON["information"]
     seen_indices = []
     failed = []
-    for line in tqdm(doc_list):
-        try:
-            seen_indices.append(str(line["isolate_index"]))
-            for attr, value in line.items():
-                if isinstance(value, float):
-                    if math.isnan(value):
-                        line[attr] = "NA"
-            # ensure year and N50 are mapped as integers
-            if "Year" in line.keys():
-                if line["Year"] == "missing":
-                    del line["Year"]
-                else:
-                    line["Year"] = int(line["Year"])
-            if "contig_stats" in line.keys():
-                line["contig_stats"]["N50"] = int(line["contig_stats"]["N50"])
-            response = client.index(index = args.index,
-                                    id = line["isolate_index"],
-                                    body = line)
-        except:
-            sys.stderr.write('\nIssue indexing isolate: ' + line['isolateName'] + '\n')
-            failed.append(line['isolateName'])
+    # open connection to Azure AQL DB
+    with pyodbc.connect(SQL_CONNECTION_STRING) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute('''CREATE TABLE ISOLATE_METADATA
+                (ISOLATE_ID INT PRIMARY KEY     NOT NULL,
+                METADATA           TEXT    NOT NULL);''')
+            #cursor.execute("DROP TABLE ISOLATE_METADATA;")
+            for line in tqdm(doc_list):
+                try:
+                    for attr, value in line.items():
+                        if isinstance(value, float):
+                            if math.isnan(value):
+                                line[attr] = "NA"
+                    # ensure year and N50 are mapped as integers
+                    if "Year" in line.keys():
+                        if line["Year"] == "missing":
+                            del line["Year"]
+                        else:
+                            line["Year"] = int(line["Year"])
+                    if "contig_stats" in line.keys():
+                        line["contig_stats"]["N50"] = int(line["contig_stats"]["N50"])
+                    # store a list of genes in isolates in the SQL db
+                    MetadataJSON = json.dumps({"consistentNames": line["consistentNames"]})
+                    del line["consistentNames"]
+                    response = client.index(index = args.index,
+                                            id = line["isolate_index"],
+                                            body = line)
+                    db_command = "INSERT INTO ISOLATE_METADATA (ISOLATE_ID,METADATA) \
+                        VALUES (" + str(line["isolate_index"]) + ", '" + MetadataJSON + "')"
+                    cursor.execute(db_command)
+                    seen_indices.append(str(line["isolate_index"]))
+                except:
+                    sys.stderr.write('\nIssue indexing isolate: ' + line['isolateName'] + '\n')
+                    failed.append(line['isolateName'])
     with open("ISOLATE_SEEN_INDICES.txt", "w") as seen:
         seen.write("\n".join(seen_indices))
     with open("ISOLATE_INDEXING_FAILED.txt", "w") as failed:

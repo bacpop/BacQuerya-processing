@@ -297,7 +297,10 @@ rule retrieve_ena_read_metadata:
         if os.path.exists("retrieved_ena_read_metadata2"):
             shell("mkdir {output} && cp retrieved_ena_read_metadata2/* {output}")
         else:
-            shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --GPS {params.GPS} --GPS-metdata {params.GPS_JSON} --assembly-url {params.assemblyURLs}')
+            if params.GPS:
+                shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --GPS --GPS-metdata {params.GPS_JSON} --assembly-url {params.assemblyURLs}')
+            else:
+                shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --assembly-url {params.assemblyURLs}')
 
 # retrieve raw reads from ENA
 rule retrieve_ena_reads:
@@ -381,13 +384,14 @@ rule supplement_isolate_metadata:
             mashIdentity = []
             mashHashes = []
             mashSpecies = []
+            uniqueSpecies = []
             for row in mashOut:
                 row = row.split("\t")
                 # filter out all rows with fewer than 3 matching hashes and those of phages
                 if int(row[1].split("/")[0]) > 2 and not "phage" in row[5]:
-                        mashIdentity.append(row[0])
-                        mashHashes.append(row[1])
-                        mashSpecies.append(row[5])
+                    mashIdentity.append(row[0])
+                    mashHashes.append(row[1])
+                    mashSpecies.append(row[5])
             isolate["mashIdentity"] = mashIdentity
             isolate["mashHashes"] = mashHashes
             isolate["mashSpecies"] = mashSpecies
