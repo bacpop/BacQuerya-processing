@@ -166,7 +166,9 @@ def main():
         subprocess_command += "cp -r "
         subprocess_command += args.ncbi_metadata + " "
         subprocess_command += args.geneMetadataDir + " "
+        subprocess_command += args.read_metadata + " "
         subprocess_command += args.assemblyAccessions + " "
+        subprocess_command += args.readAccessions + " "
         subprocess_command += args.alignment_dir + " "
         subprocess_command += args.graph_dir + " "
         subprocess_command += args.prev_run
