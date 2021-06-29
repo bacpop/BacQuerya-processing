@@ -101,21 +101,22 @@ def get_biosample_metadata(biosample_accession,
                           "BioSample_Owner": biosample_metadata_dict["BioSample"]["Owner"]["Name"],
                           "BioSample_Status": biosample_metadata_dict["BioSample"]["Status"]["@status"]}
     attributes = biosample_metadata_dict["BioSample"]["Attributes"]["Attribute"]
-    for attr in range(len(attributes)):
-        if attributes[attr]["@attribute_name"] == "INSDC center name":
-            biosample_metadata.update({"BioSample_INSDCCenterName" : attributes[attr]["#text"]})
-        if attributes[attr]["@attribute_name"] == "collection_date":
-            biosample_metadata.update({"BioSample_CollectionDate" : attributes[attr]["#text"]})
-        if attributes[attr]["@attribute_name"] == "geographic location (country and/or sea)":
-            biosample_metadata.update({"BioSample_CollectionLocation" : attributes[attr]["#text"]})
-        if attributes[attr]["@attribute_name"] == "host health state":
-            biosample_metadata.update({"BioSample_HostHealthState" : attributes[attr]["#text"]})
-        if attributes[attr]["@attribute_name"] == "isolation_source":
-            biosample_metadata.update({"BioSample_IsolationSource" : attributes[attr]["#text"]})
-        if attributes[attr]["@attribute_name"] == "serovar":
-            biosample_metadata.update({"BioSample_SeroVar" : attributes[attr]["#text"]})
-        if attributes[attr]["@attribute_name"] == "specific_host":
-            biosample_metadata.update({"BioSample_SpecificHost" : attributes[attr]["#text"]})
+    if isinstance(attributes, list):
+        for attr in range(len(attributes)):
+            if attributes[attr]["@attribute_name"] == "INSDC center name":
+                biosample_metadata.update({"BioSample_INSDCCenterName" : attributes[attr]["#text"]})
+            if attributes[attr]["@attribute_name"] == "collection_date":
+                biosample_metadata.update({"BioSample_CollectionDate" : attributes[attr]["#text"]})
+            if attributes[attr]["@attribute_name"] == "geographic location (country and/or sea)":
+                biosample_metadata.update({"BioSample_CollectionLocation" : attributes[attr]["#text"]})
+            if attributes[attr]["@attribute_name"] == "host health state":
+                biosample_metadata.update({"BioSample_HostHealthState" : attributes[attr]["#text"]})
+            if attributes[attr]["@attribute_name"] == "isolation_source":
+                biosample_metadata.update({"BioSample_IsolationSource" : attributes[attr]["#text"]})
+            if attributes[attr]["@attribute_name"] == "serovar":
+                biosample_metadata.update({"BioSample_SeroVar" : attributes[attr]["#text"]})
+            if attributes[attr]["@attribute_name"] == "specific_host":
+                biosample_metadata.update({"BioSample_SpecificHost" : attributes[attr]["#text"]})
     return biosample_metadata
 
 def calculate_assembly_stats(genomeFile):

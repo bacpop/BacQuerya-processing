@@ -27,6 +27,12 @@ def get_options():
                         required=True,
                         help="directory output by extract_genes.py for current run",
                         type=str)
+    io_opts.add_argument("-i",
+                        "--isolate-metadata",
+                        dest="isolate_pairs",
+                        required=True,
+                        help="directory output by extract_asembly_stats.py for current run",
+                        type=str)
     io_opts.add_argument("-o",
                         "--output-dir",
                         dest="output_dir",
@@ -38,6 +44,12 @@ def get_options():
                         help="alignement script is being run after panaroo_merge",
                         action='store_true',
                         default=False)
+    io_opts.add_argument("--subsample",
+                        dest="subsample",
+                        required=False,
+                        help="List of isolates to sample for gene alignment, output by GPS_subsample.py",
+                        default=None,
+                        type=str)
     io_opts.add_argument("--skip-write",
                         dest="skip_write",
                         help="skip writing of unaligned multiple sequence alignments and align what is already there",
@@ -77,6 +89,15 @@ def main():
     with open(os.path.join(args.extracted_genes, "panarooPairs.json"), "r") as jsonFile:
         pairString = jsonFile.read()
     pairs = json.loads(pairString)
+    # import biosample isolate label pairs so alignment is consistent with website
+    with open(os.path.join(args.isolate_pairs, "biosampleIsolatePairs.json"), "r") as pairFile:
+        biosampleAccessions = json.loads(pairFile.read())
+    # import list of isolates to subsample if specified
+    if args.subsample:
+        with open(args.subsample, "r") as sampleFile:
+            subsamples = sampleFile.read().splitlines()
+    else:
+        subsamples = None
     # convert gene data file to dict to improve efficiency
     sys.stderr.write("\nConverting gene_data.csv to dict\n")
     gene_data_json = {}
@@ -102,8 +123,14 @@ def main():
                         multiFSAline = []
                         for mem in range(len(y["members"])):
                             isol_label = G.graph["isolateNames"][y["members"][mem]]
-                            member_sequence = gene_data_json[y["geneIDs"].split(";")[mem]]
-                            multiFSAline.append(">" + isol_label + "\n" + member_sequence)
+                            if isol_label in biosampleAccessions:
+                                biosample_label = biosampleAccessions[isol_label]
+                                member_sequence = gene_data_json[y["geneIDs"].split(";")[mem]]
+                                if subsamples:
+                                    if isol_label in subsamples:
+                                        multiFSAline.append(">" + biosample_label + "\n" + member_sequence)
+                                else:
+                                    multiFSAline.append(">" + biosample_label + "\n" + member_sequence)
                         # use consistentName as filename
                         filename = os.path.join(raw_files, consistent_name + ".fasta")
                         unaligned_files.append(filename)
@@ -112,9 +139,17 @@ def main():
                     else:
                         isol_label = G.graph["isolateNames"][y["members"]]
                         member_sequence = gene_data_json[y["geneIDs"].split(";")[0]] # just in case we are looking at a paralog
-                        multiFSAline = ">" + isol_label + "\n" + member_sequence
-                        with open(os.path.join(args.output_dir, gene_names + ".fasta"), "w") as outFile:
-                            outFile.write(multiFSAline)
+                        if isol_label in biosampleAccessions:
+                            biosample_label = biosampleAccessions[isol_label]
+                            if subsamples:
+                                if isol_label in subsamples:
+                                    multiFSAline = ">" + biosample_label + "\n" + member_sequence
+                                    with open(os.path.join(args.output_dir, gene_names + ".fasta"), "w") as outFile:
+                                        outFile.write(multiFSAline)
+                            else:
+                                multiFSAline = ">" + biosample_label + "\n" + member_sequence
+                                with open(os.path.join(args.output_dir, gene_names + ".fasta"), "w") as outFile:
+                                    outFile.write(multiFSAline)
         else:
             # delete group alignments if they are already present- the gene names are incorrect
             group_files = glob.glob(os.path.join(args.output_dir, "group_*"))
@@ -130,8 +165,14 @@ def main():
                         multiFSAline = []
                         for mem in range(len(y["members"])):
                             isol_label = G.graph["isolateNames"][y["members"][mem]]
-                            member_sequence = gene_data_json[y["geneIDs"].split(";")[mem]]
-                            multiFSAline.append(">" + isol_label + "\n" + member_sequence)
+                            if isol_label in biosampleAccessions:
+                                biosample_label = biosampleAccessions[isol_label]
+                                member_sequence = gene_data_json[y["geneIDs"].split(";")[mem]]
+                                if subsamples:
+                                    if isol_label in subsamples:
+                                        multiFSAline.append(">" + biosample_label + "\n" + member_sequence)
+                                else:
+                                    multiFSAline.append(">" + biosample_label + "\n" + member_sequence)
                         filename = os.path.join(raw_files, gene_names + ".fasta")
                         unaligned_files.append(filename)
                         with open(filename, "w") as outFile:
@@ -139,9 +180,17 @@ def main():
                     else:
                         isol_label = G.graph["isolateNames"][y["members"]]
                         member_sequence = gene_data_json[y["geneIDs"].split(";")[0]] # just in case we are looking at a paralog
-                        multiFSAline = ">" + isol_label + "\n" + member_sequence
-                        with open(os.path.join(args.output_dir, gene_names + ".fasta"), "w") as outFile:
-                            outFile.write(multiFSAline)
+                        if isol_label in biosampleAccessions:
+                            biosample_label = biosampleAccessions[isol_label]
+                            if subsamples:
+                                if isol_label in subsamples:
+                                    multiFSAline = ">" + biosample_label + "\n" + member_sequence
+                                    with open(os.path.join(args.output_dir, gene_names + ".fasta"), "w") as outFile:
+                                        outFile.write(multiFSAline)
+                            else:
+                                multiFSAline = ">" + biosample_label + "\n" + member_sequence
+                                with open(os.path.join(args.output_dir, gene_names + ".fasta"), "w") as outFile:
+                                    outFile.write(multiFSAline)
     else:
         unaligned_files = glob.glob(os.path.join(raw_files, "*.fasta"))
     # run mafft on the unaligned MSA files
@@ -156,6 +205,5 @@ def main():
     # clean up unaligned files
     shutil.rmtree(raw_files)
     sys.exit(0)
-
 if __name__ == '__main__':
     main()

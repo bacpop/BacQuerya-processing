@@ -19,6 +19,11 @@ def get_options():
                         required=True,
                         help='directory output by extract_assembly_stats for current run',
                         type=str)
+    io_opts.add_argument("--read-metadata",
+                        dest="read_metadata",
+                        required=True,
+                        help='directory output by retrieve_read_metadata for current run',
+                        type=str)
     io_opts.add_argument("--geneMetadataDir",
                         dest="geneMetadataDir",
                         required=True,
@@ -34,10 +39,15 @@ def get_options():
                         required=True,
                         help="directory of merged panaroo runs",
                         type=str)
-    io_opts.add_argument("--accessionFile",
-                        dest="accessionFile",
+    io_opts.add_argument("--assemblyAccessions",
+                        dest="assemblyAccessions",
                         required=True,
-                        help="file of accession IDs used in the current run",
+                        help="file of assembly accession IDs used in the current run",
+                        type=str)
+    io_opts.add_argument("--readAccessions",
+                        dest="readAccessions",
+                        required=True,
+                        help="file of read accession IDs used in the current run",
                         type=str)
     io_opts.add_argument("--previous-run",
                         dest="prev_run",
@@ -53,14 +63,12 @@ def get_options():
     args = parser.parse_args()
     return (args)
 
-def mergeNCBIMetadata(current_metadata_file, prev_dir):
+def mergeIsolateMetadata(current_metadata_file, prev_dir):
     with open(current_metadata_file, "r") as currentFile:
-        currentIsolateJSON = currentFile.read()
+        currentIsolateDicts = json.loads(currentFile.read())["information"]
     previous_metadata_file = os.path.join(prev_dir, current_metadata_file)
     with open(previous_metadata_file, "r") as previousFile:
-        previousIsolateJSON = previousFile.read()
-    currentIsolateDicts = json.loads(currentIsolateJSON)["information"]
-    updatedIsolateDict = json.loads(previousIsolateJSON)
+        updatedIsolateDict = json.loads(previousFile.read())
     updatedIsolateDict["information"] += currentIsolateDicts
     with open(previous_metadata_file, "w") as updatedFile:
         updatedFile.write(json.dumps(updatedIsolateDict))
@@ -105,10 +113,12 @@ def mergeGeneMetadata(current_geneDir, prev_dir):
     with open(previous_metadataFile, "w") as updatedGeneFile:
        updatedGeneFile.write(json.dumps(updatedGeneDict))
 
-def mergeAccessionIDs(current_accessionFile, prev_dir):
-    with open(current_accessionFile, "r") as currentFile:
+def mergeAccessionIDs(current_assemblyAccessions, current_readAccessions, prev_dir):
+    with open(current_assemblyAccessions, "r") as currentFile:
         current_accessionList = currentFile.read().splitlines()
-    previous_accessionFile = os.path.join(prev_dir, os.path.basename(current_accessionFile))
+    with open(current_readAccessions, "r") as readFile:
+        current_accessionList += readFile.read().splitlines()
+    previous_accessionFile = os.path.join(prev_dir, "indexed_accessions.txt")
     with open(previous_accessionFile, "r") as previousFile:
         previous_accessionList = previousFile.read().splitlines()
     updated_accessionSet = set(previous_accessionList)
@@ -150,13 +160,13 @@ def main():
     """Main function. Parses command line args and calls functions."""
     args = get_options()
 
-    if not os.path.exists(os.path.join(args.prev_run, os.path.basename(args.accessionFile))):
+    if not os.path.exists(os.path.join(args.prev_run, os.path.basename(args.assemblyAccessions))):
         sys.stderr.write("\nCopying current run data into " + args.prev_run + "\n")
         subprocess_command = "mkdir " + args.prev_run + " && "
         subprocess_command += "cp -r "
         subprocess_command += args.ncbi_metadata + " "
         subprocess_command += args.geneMetadataDir + " "
-        subprocess_command += args.accessionFile + " "
+        subprocess_command += args.assemblyAccessions + " "
         subprocess_command += args.alignment_dir + " "
         subprocess_command += args.graph_dir + " "
         subprocess_command += args.prev_run
@@ -167,8 +177,14 @@ def main():
         # merge metadata for isolates found in NCBI for current and previous runs
         sys.stderr.write("\nMerging current and previous NCBI isolate metadata\n")
         currentIolateMetadata = os.path.join(args.ncbi_metadata, "isolateAssemblyAttributes.json")
-        mergeNCBIMetadata(currentIolateMetadata,
-                          args.prev_run)
+        mergeIsolateMetadata(currentIolateMetadata,
+                             args.prev_run)
+        sys.stderr.write("\nDone\n")
+        # merge read metadata for isolates for current and previous runs
+        sys.stderr.write("\nMerging current and previous isolate read metadata\n")
+        currentReadMetadata = os.path.join(args.read_metadata, "isolateReadAttributes.json")
+        mergeIsolateMetadata(currentReadMetadata,
+                             args.prev_run)
         sys.stderr.write("\nDone\n")
         # merge key value pairs for current and previous runs
         sys.stderr.write("\nMerging current and previous NCBI key value pairs\n")
@@ -192,7 +208,7 @@ def main():
         current_alignment_files = glob.glob(os.path.join(args.alignment_dir, "*.aln.fas")) + glob.glob(os.path.join(args.alignment_dir, "*.fasta"))
         previous_alignment_files = glob.glob(os.path.join(args.prev_run, "aligned_gene_sequences", "*.aln.fas")) + glob.glob(os.path.join(args.prev_run, "aligned_gene_sequences","*.fasta"))
         # import panarooPairs file as there is often an error due to filenames being too long
-        with open(os.path.join(geneMetadataDir, "panarooPairs.json"), "r") as jsonFile:
+        with open(os.path.join(args.geneMetadataDir, "panarooPairs.json"), "r") as jsonFile:
             pairString = jsonFile.read()
         pairs = json.loads(pairString)
         previous_alignment_files_cleaned = []
@@ -224,7 +240,8 @@ def main():
         sys.stderr.write("\nDone\n")
         # merge accession IDs for current and previous runs
         sys.stderr.write("\nMerging current and previous accession IDs\n")
-        mergeAccessionIDs(args.accessionFile,
+        mergeAccessionIDs(args.assemblyAccessions,
+                          args.readAccessions,
                           args.prev_run)
         sys.stderr.write("\nDone\n")
     sys.exit(0)

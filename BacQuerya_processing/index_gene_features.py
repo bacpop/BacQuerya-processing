@@ -50,6 +50,11 @@ def get_options():
                         required=False,
                         help='directory of assembly sequences (required for type=assembly)',
                         type=str)
+    io_opts.add_argument("--isolate-dir",
+                        dest="isolate_dir",
+                        required=False,
+                        help='directory of isolate metadata output by extract_assembly_stats.py',
+                        type=str)
     io_opts.add_argument("-o",
                         "--output-dir",
                         dest="output_dir",
@@ -100,11 +105,11 @@ def elasticsearch_isolates(allIsolatesJson,
         list(allIsolatesJson.keys())[i:i + 1500] for i in range(0, len(allIsolatesJson.keys()), 1500)
         ]
     sys.stderr.write('\nIndexing CDS features\n')
-    #with pyodbc.connect(SQL_CONNECTION_STRING) as conn:
-       # with conn.cursor() as cursor:
-           # cursor.execute('''CREATE TABLE GENE_METADATA
-             #   (GENE_ID INT PRIMARY KEY     NOT NULL,
-             #    METADATA           TEXT    NOT NULL);''')
+    with pyodbc.connect(SQL_CONNECTION_STRING) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute('''CREATE TABLE GENE_METADATA
+                (GENE_ID INT PRIMARY KEY     NOT NULL,
+                 METADATA           TEXT    NOT NULL);''')
             #cursor.execute("DROP TABLE GENE_METADATA;")
     for keys in tqdm(partioned_items):
         elastic_client = Elasticsearch([ELASTIC_API_URL],
@@ -123,17 +128,24 @@ def elasticsearch_isolates(allIsolatesJson,
                     del allIsolatesJson[line]["foundIn_biosamples"]
                     del allIsolatesJson[line]["member_annotation_ids"]
                     # extract supplementary metadata for isoaltes identified to be containing the gene
-                    isolate_metadata = []
+                    metaList = []
                     for isolate_row in isolateMetadataDict:
                         if isolate_row["isolate_index"] in isolate_indices:
-                            isolate_metadata.append({"BioSample": isolate_row["BioSample"],
-                                                     "sequenceURL": isolate_row["sequenceURL"],
-                                                     "contig_stats": isolate_row["contig_stats"],
-                                                     "scaffold_stats": isolate_row["scaffold_stats"],
-                                                     "In_Silico_St": isolate_row["In_Silico_St"],
-                                                     "GPSC": isolate_row["GPSC"],
-                                                     "Country": isolate_row["Country"],
-                                                     "Year": isolate_row["Year"]})
+                            isolate_metadata = {"BioSample": isolate_row["BioSample"],
+                                                "sequenceURL": isolate_row["sequenceURL"]}
+                            if "contig_stats" in isolate_row:
+                                isolate_metadata.update({"contig_stats": isolate_row["contig_stats"]})
+                            if "scaffold_stats" in isolate_row:
+                                isolate_metadata.update({"scaffold_stats": isolate_row["scaffold_stats"]})
+                            if "In_Silico_St" in isolate_row:
+                                isolate_metadata.update({"In_Silico_St": isolate_row["In_Silico_St"]})
+                            if "GPSC" in isolate_row:
+                                isolate_metadata.update({"contig_stats": isolate_row["GPSC"]})
+                            if "Country" in isolate_row:
+                                isolate_metadata.update({"contig_stats": isolate_row["Country"]})
+                            if "Year" in isolate_row:
+                                isolate_metadata.update({"contig_stats": isolate_row["Year"]})
+                            metaList.append(isolate_metadata)
                     response = elastic_client.index(index = index_name,
                                                     id = int(line),
                                                     body = allIsolatesJson[line],
@@ -143,7 +155,7 @@ def elasticsearch_isolates(allIsolatesJson,
                                 "foundIn_indices": isolate_indices,
                                 "foundIn_biosamples": isolate_biosamples,
                                 "member_annotation_ids": isolate_annotationIDs,
-                                "isolate_metadata": isolate_metadata})
+                                "isolateMetadata": metaList})
                     db_command = "INSERT INTO GENE_METADATA (GENE_ID,METADATA) \
                         VALUES (" + str(line) + ", '" + MetadataJSON + "')"
                     cursor.execute(db_command)

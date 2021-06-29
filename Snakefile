@@ -298,9 +298,9 @@ rule retrieve_ena_read_metadata:
             shell("mkdir {output} && cp retrieved_ena_read_metadata2/* {output}")
         else:
             if params.GPS:
-                shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --GPS --GPS-metdata {params.GPS_JSON} --assembly-url {params.assemblyURLs}')
+                shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -m {input.entrez_isolates} -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --GPS --GPS-metdata {params.GPS_JSON} --assembly-url {params.assemblyURLs}')
             else:
-                shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --assembly-url {params.assemblyURLs}')
+                shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -m {input.entrez_isolates} -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --assembly-url {params.assemblyURLs}')
 
 # retrieve raw reads from ENA
 rule retrieve_ena_reads:
@@ -335,7 +335,7 @@ rule retrieve_ena_reads:
                                                                                           output[0]) for access in job)
         #'ascp -QT -l 300m -P33001 -i ~/.aspera/connect/etc/asperaweb_id_dsa.openssh era-fasp@fasp.sra.ebi.ac.uk:vol1/fastq/ERR164/ERR164407/ERR164407.fastq.gz {output}' ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR214/001/ERR2144781/ERR2144781_1.fastq.gz
 
-# run mash screenon assemblies and reads
+# run mash screen on assemblies and reads
 rule run_mash_screen:
     input:
         read_dir=rules.retrieve_ena_reads.output,
@@ -463,7 +463,8 @@ rule extract_genes:
         assemblyStatDir=rules.extract_assembly_stats.output,
         graphDir=rules.run_panaroo.output,
         merged_panaroo=rules.merge_panaroo.output,
-        mash_metadata=rules.supplement_isolate_metadata.output
+        mash_metadata=rules.supplement_isolate_metadata.output,
+        read_metadata=rules.retrieve_ena_read_metadata.output.output_dir
     output:
         directory("extracted_genes")
     params:
@@ -475,7 +476,7 @@ rule extract_genes:
         if os.path.exists("extracted_genes2"):
             shell("mkdir {output} && cp extracted_genes2/* {output}")
         else:
-            shell('python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -m {input.assemblyStatDir} -g {input.graphDir} -i {params.index} -o {output} --threads {params.threads} --index-name {params.index_name} --prev-dir previous_run --run-type {params.run_type} --update')
+            shell('python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -m {input.assemblyStatDir} -r {input.read_metadata} -g {input.graphDir} -i {params.index} -o {output} --threads {params.threads} --index-name {params.index_name} --prev-dir previous_run --run-type {params.run_type} --update')
 
 # calculate score for isolates based on available metadata
 rule calculate_score:
@@ -495,13 +496,15 @@ rule mafft_align:
     input:
         merged_output=rules.merge_panaroo.output,
         extracted_genes=rules.extract_genes.output,
-        graphDir=rules.run_panaroo.output
+        graphDir=rules.run_panaroo.output,
+        isolate_stats=rules.extract_assembly_stats.output,
+        sampleList="GPS_samples.txt"
     params:
         threads=config['n_cpu']
     output:
         directory("aligned_gene_sequences")
     run:
-        shell("python generate_alignments-runner.py --graph-dir {input.graphDir} --extracted-genes {input.extracted_genes} --output-dir {output} --threads {params.threads}")
+        shell("python generate_alignments-runner.py --graph-dir {input.graphDir} --extracted-genes {input.extracted_genes} -i {input.isolate_stats} --output-dir {output} --subsample {input.sampleList} --threads {params.threads}")
 
 # append isolate attributes to elasticsearch index
 rule index_isolate_attributes:
@@ -521,8 +524,10 @@ rule index_isolate_attributes:
 rule merge_runs:
     input:
         ncbiAssemblyStatDir=rules.extract_assembly_stats.output,
+        readMetadataDir=rules.retrieve_ena_read_metadata.output.output_dir,
         extractedGeneMetadata=rules.extract_genes.output,
         currentRunAccessions=config['extract_entrez_information']['accession_file'],
+        readAccessions=config['extract_read_metadata']['accession_file'],
         aligned_genes=rules.mafft_align.output,
         graphDir=rules.run_panaroo.output
     params:
@@ -530,7 +535,7 @@ rule merge_runs:
     output:
         touch("merge_runs.done")
     run:
-        shell('python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --graph-dir {input.graphDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --accessionFile {input.currentRunAccessions} --previous-run previous_run --threads {params.threads}')
+        shell('python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --read-metadata {input.readMetadataDir} --graph-dir {input.graphDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --assemblyAccessions {input.currentRunAccessions} --readAccessions {input.readAccessions} --previous-run previous_run --threads {params.threads}')
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_gene_sequences:

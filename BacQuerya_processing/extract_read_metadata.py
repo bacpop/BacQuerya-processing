@@ -41,6 +41,12 @@ def get_options():
                         help='Source for read data (SRA or ENA)',
                         choices=['sra', 'ena'],
                         type=str)
+    io_opts.add_argument("-m",
+                        "--isolate-metadata",
+                        dest="isolate_metadata",
+                        required=True,
+                        help='Directory output by extract_assembly_stats.py',
+                        type=str)
     io_opts.add_argument("-i",
                         "--index-file",
                         dest="index_file",
@@ -172,15 +178,16 @@ def download_ENA_metadata(accession_dict,
                         # if a Blackwell assembly is available, we need to retrieve it and calculate assembly statistics
                         genome_representation = "full"
                         assemblyLink = assemblyURLs[biosample_id]
-                        # download the assembly file and save too a temp directory
+                        # download the assembly file and save to a temp directory
                         ssl._create_default_https_context = ssl._create_unverified_context
                         assemblyFile = os.path.join(temp_dir, os.path.basename(assemblyLink))
                         with urlopen(assemblyLink) as in_stream, open(assemblyFile, 'wb') as out_file:
                             copyfileobj(in_stream, out_file)
-                        # unzip the assembly file
-                        subprocess.run("gunzip " + assemblyFile, shell=True, check=True)
+                        # unzip the assembly file if necessary
+                        if ".gz" in assemblyFile:
+                            subprocess.run("gunzip " + assemblyFile, shell=True, check=True)
                         # calculate assembly statistics
-                        contig_stats, scaffold_stats = calculate_assembly_stats(assemblyFile)
+                        contig_stats, scaffold_stats = calculate_assembly_stats(assemblyFile.replace(".gz", ""))
                         assembly_stats = True
                         fastqLinks.append(assemblyLink)
                     else:
@@ -194,16 +201,16 @@ def download_ENA_metadata(accession_dict,
         except:
             submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["namespace"]
         # if we are indexing the GPS data, we need to set the isolate name as the lane_id
+        isolateName = cleaned_accession
         if GPS:
             try:
                 GPS_metadata = GPS_metadataJSON[run_accession]
+                isolateName = GPS_metadata["Lane_Id"].replace("_", " ")
             except KeyError:
                 for accession, supplement in GPS_metadataJSON.items():
                     if "ERS" in supplement.keys() and supplement["ERS"] == cleaned_accession:
                         GPS_metadata = supplement
-            isolateName = GPS_metadata["Lane_Id"].replace("_", " ")
-        else:
-            isolateName = cleaned_accession
+                        isolateName = GPS_metadata["Lane_Id"].replace("_", " ")
         metadata = {"isolateName" : isolateName,
                     "accession" : cleaned_accession,
                     "read_accession" : cleaned_accession,
@@ -302,10 +309,13 @@ def main():
         # get BioSample Metadata
         sys.stderr.write('\nDownloading BioSample metadata\n')
         #### need to get assembly accessions too if they are present for the GPS data
+        # also need to store biosample accessions for read data
+        biosample_pairs = {}
         for metadata_line in tqdm(metadata):
             biosample_metadata = get_biosample_metadata(metadata_line["BioSample"], args.email)
             if biosample_metadata:
                 metadata_line.update(biosample_metadata)
+                biosample_pairs[metadata_line["isolateName"]] = metadata_line["BioSample"]
         # write out list of run accessions
         with open(os.path.join(args.output_dir, "fastq_links.txt"), "w") as r:
             r.write("\n".join(fastq_links))
@@ -319,6 +329,12 @@ def main():
         indexNoDict["isolateIndexNo"] = index_no
         with open(args.index_file, "w") as indexFile:
             indexFile.write(json.dumps(indexNoDict))
+        # update isolate biosample label dict
+        with open(os.path.join(args.isolate_metadata, "biosampleIsolatePairs.json"), "r") as inBiosample:
+            biosample_dict = json.loads(inBiosample.read())
+        biosample_dict.update(biosample_pairs)
+        with open(os.path.join(args.isolate_metadata, "biosampleIsolatePairs.json"), "w") as outBiosample:
+            outBiosample.write(json.dumps(biosample_dict))
         # remove temp dir
         rmtree(temp_dir)
     if args.read_source == "sra":

@@ -3,10 +3,6 @@
 """
 This script uses GFF and Sequence parsing to convert GFF files to json strings and extract gene names and sequences for COBS indexing.
 """
-from BCBio import GFF
-from Bio import SeqIO
-from Bio.Seq import Seq
-from elasticsearch import Elasticsearch
 from joblib import Parallel, delayed
 import json
 import glob
@@ -14,7 +10,6 @@ import networkx as nx
 import numpy as np
 import os
 import pandas as pd
-import re
 import requests
 import shutil
 import subprocess
@@ -24,7 +19,6 @@ from tqdm import tqdm
 import xmltodict
 
 from BacQuerya_processing.index_gene_features import elasticsearch_isolates
-from BacQuerya_processing.panaroo_clean_inputs import reverse_complement, translate
 
 def get_options():
 
@@ -56,7 +50,13 @@ def get_options():
                         "--isolate-metadata",
                         dest="isolate_metadata",
                         required=True,
-                        help="directory of isolate metadata output by extract_assembly_stats",
+                        help="directory of isolate metadata output by extract_assembly_stats.py",
+                        type=str)
+    io_opts.add_argument("-r",
+                        "--read-metadata",
+                        dest="read_metadata",
+                        required=True,
+                        help="directory of isolate metadata output by extract_read_metadata.py",
                         type=str)
     io_opts.add_argument("-o",
                         "--output",
@@ -469,11 +469,11 @@ def query_isolates(annotation_file,
                 query_dicts[assigned_index_no] = annotation_dict
     shutil.rmtree(temp_dir)
     return query_dicts
-# cd-hit 4.8.1 works
 
-def append_gene_indices(isolate_file, genes_contained):
-    """Add indices of all genes within the isolate to the isolate attribute json"""
-    with open(isolate_file, "r") as f:
+def append_gene_indices(isolate_assembly_file, isolate_read_file, genes_contained):
+    """Add indices of all genes within the isolate to the isolate attribute jsons"""
+    # add to extracted assembly stats metadata
+    with open(isolate_assembly_file, "r") as f:
         isolate_json = f.read()
     isolate_dict = json.loads(isolate_json)
     for isol_name in tqdm(range(len(isolate_dict["information"]))):
@@ -486,7 +486,24 @@ def append_gene_indices(isolate_file, genes_contained):
             isolate_gene_names.append(annotation_name)
         if not len(isolate_gene_names) == 0:
             isolate_dict["information"][isol_name]["consistentNames"] = sorted(isolate_gene_names)
-    with open(isolate_file, "w") as o:
+    with open(isolate_assembly_file, "w") as o:
+        o.write(json.dumps(isolate_dict))
+    # add to retrieved_ena_read_metadata
+    with open(isolate_read_file, "r") as f:
+        isolate_json = f.read()
+    isolate_dict = json.loads(isolate_json)
+    for isol_name in tqdm(range(len(isolate_dict["information"]))):
+        isolate_gene_indices = []
+        isolate_gene_names = []
+        isolate_non_CDS = []
+        isolateMetadataName = isolate_dict["information"][isol_name]["isolateName"]
+        if isolateMetadataName in genes_contained:
+            for annotation_index, annotation_name in genes_contained[isolateMetadataName].items():
+                isolate_gene_indices.append(annotation_index)
+                isolate_gene_names.append(annotation_name)
+        if not len(isolate_gene_names) == 0:
+            isolate_dict["information"][isol_name]["consistentNames"] = sorted(isolate_gene_names)
+    with open(isolate_read_file, "w") as o:
         o.write(json.dumps(isolate_dict))
 
 def main():
@@ -499,6 +516,7 @@ def main():
     isolate_pairs = os.path.join(args.isolate_metadata, "indexIsolatePairs.json")
     isolate_json = os.path.join(args.isolate_metadata, "isolateAssemblyAttributes.json")
     biosampleJSON = os.path.join(args.isolate_metadata, "biosampleIsolatePairs.json")
+    read_json = os.path.join(args.read_metadata, "isolateReadAttributes.json")
     # load isolate-index k, v pairs
     with open(isolate_pairs, "r") as isolateIndex:
         isolateString = isolateIndex.read()
@@ -534,6 +552,7 @@ def main():
         # add gene indices to isolate jsons
         sys.stderr.write('\nAdding gene names to isolate assembly JSONs\n')
         append_gene_indices(isolate_json,
+                            read_json,
                             genes_contained)
         sys.stderr.write('\nWriting gene JSON file\n')
         with open(os.path.join(args.output_dir, "annotatedNodes.json"), "w") as n:
@@ -595,9 +614,10 @@ def main():
                     annotatedNodes["information"][index_no] = updated_info
             with open(os.path.join(args.prev_dir, os.path.basename(args.output_dir), "annotatedNodes.json"), "w") as n:
                 n.write(json.dumps(annotatedNodes))
-            # directly add information to elasticindex
-            sys.stderr.write('\nBuilding Elastic Search index\n')
-            elasticsearch_isolates(updated_genes, args.index_name)
+    if args.elastic or args.run_type == "query":
+        # directly add information to elasticindex
+        sys.stderr.write('\nBuilding Elastic Search index\n')
+        elasticsearch_isolates(updated_genes, args.index_name)
     # update isolate index number for subsequent runs
     indexNoDict["geneIndexNo"] = index_no
     with open(args.index_file, "w") as indexFile:
