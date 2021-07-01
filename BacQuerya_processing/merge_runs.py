@@ -114,18 +114,29 @@ def mergeGeneMetadata(current_geneDir, prev_dir):
        updatedGeneFile.write(json.dumps(updatedGeneDict))
 
 def mergeAccessionIDs(current_assemblyAccessions, current_readAccessions, prev_dir):
+    # merge assembly accessions
     with open(current_assemblyAccessions, "r") as currentFile:
-        current_accessionList = currentFile.read().splitlines()
-    with open(current_readAccessions, "r") as readFile:
-        current_accessionList += readFile.read().splitlines()
-    previous_accessionFile = os.path.join(prev_dir, "indexed_accessions.txt")
-    with open(previous_accessionFile, "r") as previousFile:
+        current_assemblyList = currentFile.read().splitlines()
+    previous_assemblies = os.path.join(prev_dir, current_assemblyAccessions)
+    with open(previous_assemblies, "r") as previousFile:
         previous_accessionList = previousFile.read().splitlines()
     updated_accessionSet = set(previous_accessionList)
-    for access in current_accessionList:
+    for access in current_assemblyList:
         updated_accessionSet.add(access)
     updated_accessionList = list(updated_accessionSet)
-    with open(previous_accessionFile, "w") as updatedFile:
+    with open(previous_assemblies, "w") as updatedFile:
+        updatedFile.write("\n".join(updated_accessionList))
+    # merge read accessions
+    with open(current_readAccessions, "r") as currentFile:
+        current_readList = currentFile.read().splitlines()
+    previous_reads = os.path.join(prev_dir, current_readAccessions)
+    with open(previous_reads, "r") as previousFile:
+        previous_accessionList = previousFile.read().splitlines()
+    updated_accessionSet = set(previous_accessionList)
+    for access in current_readList:
+        updated_accessionSet.add(access)
+    updated_accessionList = list(updated_accessionSet)
+    with open(previous_reads, "w") as updatedFile:
         updatedFile.write("\n".join(updated_accessionList))
 
 def merge_alignments(current_alignment_file, previous_alignment_files, prev_dir):

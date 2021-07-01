@@ -87,10 +87,15 @@ def get_options():
                         required=False,
                         help="specify if we are indexing GPS data",
                         action='store_true')
-    io_opts.add_argument("--GPS-metdata",
-                        dest="GPS_metadataJSON",
+    io_opts.add_argument("--ESC",
+                        dest="ESC",
                         required=False,
-                        help="JSON file of GPS metadata output by scripts/GPS_extract_supplementary_metadata.py",
+                        help="specify if we are indexing ESC data",
+                        action='store_true')
+    io_opts.add_argument("--supplementary-metdata",
+                        dest="supplementary_metadataJSON",
+                        required=False,
+                        help="JSON file of supplementary metadata",
                         default=None,
                         type=str)
     io_opts.add_argument("--assembly-url",
@@ -135,7 +140,8 @@ def download_SRA_metadata(cleaned_accession,
 def download_ENA_metadata(accession_dict,
                           temp_dir,
                           GPS,
-                          GPS_metadataJSON,
+                          ESC,
+                          supplementary_metadataJSON,
                           assemblyURLs):
     cleaned_accession = accession_dict["input_accession"]
     index_no = accession_dict["isolate_index"]
@@ -204,13 +210,16 @@ def download_ENA_metadata(accession_dict,
         isolateName = cleaned_accession
         if GPS:
             try:
-                GPS_metadata = GPS_metadataJSON[run_accession]
+                GPS_metadata = supplementary_metadataJSON[run_accession]
                 isolateName = GPS_metadata["Lane_Id"].replace("_", " ")
             except KeyError:
-                for accession, supplement in GPS_metadataJSON.items():
+                for accession, supplement in supplementary_metadataJSON.items():
                     if "ERS" in supplement.keys() and supplement["ERS"] == cleaned_accession:
                         GPS_metadata = supplement
                         isolateName = GPS_metadata["Lane_Id"].replace("_", " ")
+        if ESC:
+            ESC_metadata = supplementary_metadataJSON[cleaned_accession]
+            isolateName = cleaned_accession
         metadata = {"isolateName" : isolateName,
                     "accession" : cleaned_accession,
                     "read_accession" : cleaned_accession,
@@ -226,6 +235,8 @@ def download_ENA_metadata(accession_dict,
                     "allAttributes" : json.dumps(accession_metadata["SAMPLE"])}
         if GPS:
             metadata.update(GPS_metadata)
+        if ESC:
+            metadata.update(ESC_metadata)
         # add assembly stats to isolate metadata if it is defined
         if assembly_stats:
             metadata["contig_stats"] = contig_stats
@@ -234,7 +245,6 @@ def download_ENA_metadata(accession_dict,
         indexIsolatePair = {isolateName: index_no}
         if not run_accession == "":
             metadata.update({"run_accession" : run_accession})
-        metadata_json = json.dumps(metadata).replace("@", "")
         return [fastqLinks, metadata, indexIsolatePair]
     except:
         sys.stderr.write("Request failed for the following accession: " + cleaned_accession)
@@ -277,11 +287,11 @@ def main():
         indexed_accessions[i:i + args.n_cpu] for i in range(0, len(indexed_accessions), args.n_cpu)
     ]
     # import the GPS metadata JSON if needed
-    if args.GPS:
-        with open(args.GPS_metadataJSON, "r") as metaFile:
-           GPS_metadataJSON = json.loads(metaFile.read())
+    if args.GPS or args.ESC:
+        with open(args.supplementary_metadataJSON, "r") as metaFile:
+           supplementary_metadataJSON = json.loads(metaFile.read())
     else:
-        GPS_metadataJSON = None
+        supplementary_metadataJSON = None
     # import file of biosample assembly links k, v pairs
     if args.assemblyURLs:
         with open(args.assemblyURLs, "r") as linksFile:
@@ -296,7 +306,8 @@ def main():
             access_data +=  Parallel(n_jobs=args.n_cpu)(delayed(download_ENA_metadata)(access,
                                                                                        temp_dir,
                                                                                        args.GPS,
-                                                                                       GPS_metadataJSON,
+                                                                                       args.ESC,
+                                                                                       supplementary_metadataJSON,
                                                                                        assemblyURLs) for access in job)
         #access_data = [link for row in access_data for link in row]
         fastq_links = []

@@ -104,7 +104,7 @@ def elasticsearch_isolates(allIsolatesJson,
     partioned_items = [
         list(allIsolatesJson.keys())[i:i + 1500] for i in range(0, len(allIsolatesJson.keys()), 1500)
         ]
-    sys.stderr.write('\nIndexing CDS features\n')
+    sys.stderr.write('\nIndexing gene metadata\n')
     with pyodbc.connect(SQL_CONNECTION_STRING) as conn:
         with conn.cursor() as cursor:
             cursor.execute('''CREATE TABLE GENE_METADATA
@@ -215,7 +215,7 @@ def main():
         representative_sequences = []
         sys.stderr.write('\nWriting gene-specific files for COBS indexing\n')
         # need to apply same constraints as those in extract_genes.py
-        for node in G._node:
+        for node in tqdm(G._node):
             y = G._node[node]
             gene_name = y["name"]
             splitNames = gene_name.split("~~~")
@@ -248,6 +248,7 @@ def main():
                  args.output_dir,
                  args.kmer_length,
                  args.fpr)
+    sys.stderr.write('\nCleaning up raw files\n')
     if not args.dirty:
         shutil.rmtree(temp_dir)
     sys.exit(0)

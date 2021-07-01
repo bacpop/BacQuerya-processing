@@ -70,10 +70,10 @@ def get_options():
                         required=False,
                         help="specify if we are indexing GPS data",
                         action='store_true')
-    io_opts.add_argument("--GPS-metdata",
-                        dest="GPS_metadataJSON",
+    io_opts.add_argument("--supplementary-metdata",
+                        dest="supplementary_metadataJSON",
                         required=False,
-                        help="JSON file of GPS metadata output by scripts/GPS_extract_supplementary_metadata.py",
+                        help="JSON file of supplementary metadata",
                         default=None,
                         type=str)
     args = parser.parse_args()
@@ -128,7 +128,7 @@ def calculate_assembly_stats(genomeFile):
 def assembly_to_JSON(assigned_index,
                      genome_dir,
                      GPS,
-                     GPS_metadataJSON):
+                     supplementary_metadataJSON):
     """Use assembly stats to extract information for elasticsearch indexing"""
     index_no = assigned_index['isolate_index']
     assembly_file = assigned_index['assembly file']
@@ -154,7 +154,7 @@ def assembly_to_JSON(assigned_index,
         except AttributeError:
             pass
     if GPS:
-        for accession, supplement in GPS_metadataJSON.items():
+        for accession, supplement in supplementary_metadataJSON.items():
             if supplement["Lane_Id"] == assembly_dict["isolateNameUnderscore"]:
                 assembly_dict.update(supplement)
     return assembly_dict
@@ -193,10 +193,10 @@ def main():
         indexedIsolateDict.update({isol_label: index_no})
     # import the GPS metadata JSON if needed
     if args.GPS:
-        with open(args.GPS_metadataJSON, "r") as metaFile:
-           GPS_metadataJSON = json.loads(metaFile.read())
+        with open(args.supplementary_metadataJSON, "r") as metaFile:
+           supplementary_metadataJSON = json.loads(metaFile.read())
     else:
-        GPS_metadataJSON = None
+        supplementary_metadataJSON = None
     sys.stderr.write('\nConverting assembly stat files to JSON\n')
     job_list = [
         indexed_assemblies[i:i + args.n_cpu] for i in range(0, len(indexed_assemblies), args.n_cpu)
@@ -207,7 +207,7 @@ def main():
         features = Parallel(n_jobs=args.n_cpu)(delayed(assembly_to_JSON)(assem,
                                                                          args.genomes,
                                                                          args.GPS,
-                                                                         GPS_metadataJSON) for assem in job)
+                                                                         supplementary_metadataJSON) for assem in job)
         all_features += features
     # get label biosample pairs for isolate URL
     sys.stderr.write('\nWriting label : BioSample pairs and extracting BioSample metadata\n')

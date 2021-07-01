@@ -392,7 +392,7 @@ def generate_reference_library(graph_dir,
                 # we have removed PRED_, UNNAMED_ and group_ from the name for subsequent panaroo runs
                 newGeneNames = "~~~".join(newSplitNames)
             else:
-                # apply a consistent name if all annotations are named with an UNNAMED_ prefix
+                # apply a consistent name if all annotations are named with an group_ prefix
                 consistent_name = "COG_" + str(assigned_index_no)
                 newGeneNames = consistent_name
             if pfamResult:
@@ -525,7 +525,6 @@ def main():
     with open(args.index_file, "r") as indexFile:
         indexNoDict = json.loads(indexFile.read())
     index_no = int(indexNoDict["geneIndexNo"])
-    elastic = args.elastic
     annotation_files = glob.glob(os.path.join(args.gffs, "*.gff"))
     isolate_labels = [os.path.basename(filename).replace(".gff", "") for filename in annotation_files]
     if args.run_type == "reference":
@@ -572,6 +571,7 @@ def main():
         # if we're indexing non-reference isolates, we need to query against the graph and only add new nodes.
         # we also need to add the isolate to the list of isolates containing the gene in the elastic index, annotatedNodes.json and the panaroo outputs
         query_dicts = []
+        sys.stderr.write('\nAnnotating isolate genes with panaroo-integrate\n')
         for job in tqdm(job_list):
             query_dicts += Parallel(n_jobs=args.n_cpu)(delayed(query_isolates)(annotation_file,
                                                                               args.graph_dir,
@@ -616,8 +616,8 @@ def main():
                 n.write(json.dumps(annotatedNodes))
     if args.elastic or args.run_type == "query":
         # directly add information to elasticindex
-        sys.stderr.write('\nBuilding Elastic Search index\n')
-        elasticsearch_isolates(updated_genes, args.index_name)
+        sys.stderr.write('\Populating Elasticsearch index\n')
+        #elasticsearch_isolates(updated_genes, args.index_name)
     # update isolate index number for subsequent runs
     indexNoDict["geneIndexNo"] = index_no
     with open(args.index_file, "w") as indexFile:

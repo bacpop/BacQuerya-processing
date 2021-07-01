@@ -21,11 +21,15 @@ rule retrieve_assembly_stats:
         email=config['extract_entrez_information']['email'],
         attribute=config['extract_entrez_information']['assembly'],
         threads=config['n_cpu'],
-        GPS=config['GPS']
+        GPS=config['GPS'],
+        skipNCBI=config['extract_entrez_information']['skip_NCBI']
     run:
-        shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
-        if params.GPS == True:
-            shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
+        if not params.skipNCBI:
+            shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
+            if params.GPS == True:
+                shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
+        else:
+            shell("mkdir {output}")
 
 # retrieve isolate-GFFS
 rule retrieve_annotations:
@@ -37,11 +41,15 @@ rule retrieve_annotations:
         email=config['extract_entrez_information']['email'],
         attribute=config['extract_entrez_information']['gff'],
         threads=config['n_cpu'],
-        GPS=config['GPS']
+        GPS=config['GPS'],
+        skipNCBI=config['extract_entrez_information']['skip_NCBI']
     run:
-        shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
-        if params.GPS == True:
-            shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
+        if not params.skipNCBI:
+            shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
+            if params.GPS == True:
+                shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
+        else:
+            shell("mkdir {output}")
 
 # gunzip annotation files
 rule unzip_annotations:
@@ -49,8 +57,13 @@ rule unzip_annotations:
         rules.retrieve_annotations.output
     output:
         directory("unzipped_annotations")
-    shell:
-        "mkdir {output} && cp {input}/*.gz {output} && gunzip {output}/*.gz"
+    params:
+        skipNCBI=config['extract_entrez_information']['skip_NCBI']
+    run:
+        if not params.skipNCBI:
+            shell("mkdir {output} && cp {input}/*.gz {output} && gunzip {output}/*.gz")
+        else:
+            shell("mkdir {output}")
 
 # retrieve isolate-genomes
 rule retrieve_genomes:
@@ -62,11 +75,15 @@ rule retrieve_genomes:
         email=config['extract_entrez_information']['email'],
         attribute=config['extract_entrez_information']['genome'],
         threads=config['n_cpu'],
-        GPS=config['GPS']
+        GPS=config['GPS'],
+        skipNCBI=config['extract_entrez_information']['skip_NCBI']
     run:
-        shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
-        if params.GPS == True:
-            shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
+        if not params.skipNCBI:
+            shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
+            if params.GPS == True:
+                shell("python scripts/GPS_rename_assemblies.py --input-dir {output}")
+        else:
+            shell("mkdir {output}")
 
 # retrieve raw reads using SRA toolkit
 rule retrieve_sra_reads:
@@ -95,8 +112,13 @@ rule unzip_genomes:
         rules.retrieve_genomes.output
     output:
         directory("unzipped_genomes")
-    shell:
-        "mkdir {output} && cp {input}/*.gz {output} && gunzip {output}/*.gz"
+    params:
+        skipNCBI=config['extract_entrez_information']['skip_NCBI']
+    run:
+        if not params.skipNCBI:
+            shell("mkdir {output} && cp {input}/*.gz {output} && gunzip {output}/*.gz")
+        else:
+            shell("mkdir {output}")
 
 # convert .sra to fastq
 rule expand_sra_reads:
@@ -189,12 +211,15 @@ rule run_prodigal:
                 subprocess.run(shell_command, shell=True, check=True)
 
             assemblies = glob.glob(os.path.join(input.genome_dir[0], "*.fna"))
-            job_list = [
-                assemblies[i:i + params.threads] for i in range(0, len(assemblies), params.threads)
-            ]
-            for job in tqdm(job_list):
-                Parallel(n_jobs=params.threads)(delayed(multithread_prodigal)(assem,
-                                                                            output[0]) for assem in job)
+            if not assemblies == []:
+                job_list = [
+                    assemblies[i:i + params.threads] for i in range(0, len(assemblies), params.threads)
+                ]
+                for job in tqdm(job_list):
+                    Parallel(n_jobs=params.threads)(delayed(multithread_prodigal)(assem,
+                                                                                output[0]) for assem in job)
+            else:
+                shell("mkdir {output}")
         else:
             shell("mkdir {output} && cp prodigal_predicted_annotations2/* {output}")
 
@@ -270,10 +295,10 @@ rule extract_assembly_stats:
         threads=config['n_cpu'],
         email=config['extract_entrez_information']['email'],
         GPS=config["GPS"],
-        GPS_JSON=config["GPS_metadataJSON"]
+        supplementary_JSON=config["supplementaryMetadataJSON"]
     run:
         if params.GPS:
-            shell('python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output} -e {params.email} --previous-run previous_run --threads {params.threads} --GPS --GPS-metdata {params.GPS_JSON}')
+            shell('python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output} -e {params.email} --previous-run previous_run --threads {params.threads} --GPS --supplementary-metdata {params.supplementary_JSON}')
         else:
             shell('python extract_assembly_stats-runner.py -a {input.entrez_stats} -g {input.genome_files} -i {params.index} -o {output} -e {params.email} --previous-run previous_run --threads {params.threads}')
 
@@ -291,14 +316,17 @@ rule retrieve_ena_read_metadata:
         email=config['extract_entrez_information']['email'],
         threads=config['n_cpu'],
         GPS=config["GPS"],
-        GPS_JSON=config["GPS_metadataJSON"],
+        ESC=config["ESC"],
+        supplementary_JSON=config["supplementaryMetadataJSON"],
         assemblyURLs="661K_biosampleAssemblyURLs.json"
     run:
         if os.path.exists("retrieved_ena_read_metadata2"):
             shell("mkdir {output} && cp retrieved_ena_read_metadata2/* {output}")
         else:
             if params.GPS:
-                shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -m {input.entrez_isolates} -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --GPS --GPS-metdata {params.GPS_JSON} --assembly-url {params.assemblyURLs}')
+                shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -m {input.entrez_isolates} -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --GPS --supplementary-metdata {params.supplementary_JSON} --assembly-url {params.assemblyURLs}')
+            elif params.ESC:
+                shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -m {input.entrez_isolates} -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --ESC --supplementary-metdata {params.supplementary_JSON} --assembly-url {params.assemblyURLs}')
             else:
                 shell('python extract_read_metadata-runner.py -s {input.access_file} -r ena -m {input.entrez_isolates} -i {params.index} -e {params.email} --previous-run previous_run --threads {params.threads} -o {output.output_dir} --assembly-url {params.assemblyURLs}')
 

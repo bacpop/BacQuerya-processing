@@ -107,7 +107,8 @@ def main():
                     cursor.execute(db_command)
                 response = client.index(index = args.index,
                                         id = line["isolate_index"],
-                                        body = line)
+                                        body = line,
+                                        request_timeout=60)
                 seen_indices.append(str(line["isolate_index"]))
                 #except:
                     #sys.stderr.write('\nIssue indexing isolate: ' + line['isolateName'] + '\n')
