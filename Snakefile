@@ -22,7 +22,7 @@ rule retrieve_assembly_stats:
         attribute=config['extract_entrez_information']['assembly'],
         threads=config['n_cpu'],
         GPS=config['GPS'],
-        skipNCBI=config['extract_entrez_information']['skip_NCBI']
+        skipNCBI=config['skip_NCBI']
     run:
         if not params.skipNCBI:
             shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
@@ -42,7 +42,7 @@ rule retrieve_annotations:
         attribute=config['extract_entrez_information']['gff'],
         threads=config['n_cpu'],
         GPS=config['GPS'],
-        skipNCBI=config['extract_entrez_information']['skip_NCBI']
+        skipNCBI=config['skip_NCBI']
     run:
         if not params.skipNCBI:
             shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
@@ -58,7 +58,7 @@ rule unzip_annotations:
     output:
         directory("unzipped_annotations")
     params:
-        skipNCBI=config['extract_entrez_information']['skip_NCBI']
+        skipNCBI=config['skip_NCBI']
     run:
         if not params.skipNCBI:
             shell("mkdir {output} && cp {input}/*.gz {output} && gunzip {output}/*.gz")
@@ -76,7 +76,7 @@ rule retrieve_genomes:
         attribute=config['extract_entrez_information']['genome'],
         threads=config['n_cpu'],
         GPS=config['GPS'],
-        skipNCBI=config['extract_entrez_information']['skip_NCBI']
+        skipNCBI=config['skip_NCBI']
     run:
         if not params.skipNCBI:
             shell('python extract_entrez_information-runner.py -s {input} -e {params.email} --threads {params.threads} -o {output} -a {params.attribute}')
@@ -113,7 +113,7 @@ rule unzip_genomes:
     output:
         directory("unzipped_genomes")
     params:
-        skipNCBI=config['extract_entrez_information']['skip_NCBI']
+        skipNCBI=config['skip_NCBI']
     run:
         if not params.skipNCBI:
             shell("mkdir {output} && cp {input}/*.gz {output} && gunzip {output}/*.gz")
@@ -345,9 +345,10 @@ rule retrieve_ena_reads:
             def download_read(accession, output_dir):
                 if "contigs" in accession:
                     ## currently only downloading assemblies and not read sets for efficiency
-                    ssl._create_default_https_context = ssl._create_unverified_context
-                    with urlopen(accession) as in_stream, open(os.path.join(output_dir, os.path.basename(accession)), 'wb') as out_file:
-                        copyfileobj(in_stream, out_file)
+                    #ssl._create_default_https_context = ssl._create_unverified_context
+                    #with urlopen(accession) as in_stream, open(os.path.join(output_dir, os.path.basename(accession)), 'wb') as out_file:
+                        #copyfileobj(in_stream, out_file)
+                    subprocess.run("wget -O " + os.path.join(output_dir, os.path.basename(accession)) + " " + accession.replace("http", "ftp"), shell = True, check = True)
                 else:
                     pass
                 return "success"
@@ -417,12 +418,15 @@ rule supplement_isolate_metadata:
                 row = row.split("\t")
                 # filter out all rows with fewer than 3 matching hashes and those of phages
                 if int(row[1].split("/")[0]) > 2 and not "phage" in row[5]:
-                    mashIdentity.append(row[0])
-                    mashHashes.append(row[1])
-                    mashSpecies.append(row[5])
+                    species = " ".join(row[5].split(" ")[2:4])
+                    if not species in uniqueSpecies:
+                        uniqueSpecies.append(species)
+                        mashIdentity.append(row[0])
+                        mashHashes.append(row[1])
+                        mashSpecies.append(row[5])
             isolate["mashIdentity"] = mashIdentity
             isolate["mashHashes"] = mashHashes
-            isolate["mashSpecies"] = mashSpecies
+            isolate["mashSpecies"] = uniqueSpecies
             return isolate
 
         def appendMashReads(read, mash_dir):
@@ -543,10 +547,12 @@ rule index_isolate_attributes:
         scored=rules.calculate_score.output
     params:
         index=config['index_isolate_attributes']['index'],
+        indexIsolates=config["index_isolates"]
     output:
         touch("index_isolates.done")
-    shell:
-       'python index_isolate_attributes-runner.py -f {input.assemblyStatDir}/isolateAssemblyAttributes.json -e {input.ena_metadata} -i {params.index} -g {input.feature_file}'
+    run:
+        if indexIsolates:
+            shell('python index_isolate_attributes-runner.py -f {input.assemblyStatDir}/isolateAssemblyAttributes.json -e {input.ena_metadata} -i {params.index} -g {input.feature_file}')
 
 # merge the current run with information from previous runs
 rule merge_runs:
@@ -577,12 +583,15 @@ rule index_gene_sequences:
         threads=config['n_cpu'],
         index_type=config['index_sequences']['gene_type'],
         elasticIndex=config['index_sequences']['elasticSearchIndex'],
-        index_genes=config["index_genes"]
+        index_genes=config["index_genes"],
+        index_sequences=config["index_sequences"]
     run:
-        if params.index_genes == True:
+        if params.index_genes:
             shell('python index_gene_features-runner.py -t {params.index_type} -i previous_run/extracted_genes -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads} --elastic-index --index {params.elasticIndex}')
-        if params.index_genes == False:
+        if not params.index_genes and params.index_sequences:
             shell('python index_gene_features-runner.py -t {params.index_type} -i previous_run/extracted_genes -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads}')
+        if not params.index_genes and not params.index_sequences:
+            shell("mkdir {output}")
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_assembly_sequences:

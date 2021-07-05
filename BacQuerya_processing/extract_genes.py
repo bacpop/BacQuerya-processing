@@ -432,13 +432,15 @@ def query_isolates(annotation_file,
     isolate_label = os.path.basename(annotation_file).replace(".gff", "")
     temp_dir = tempfile.mkdtemp(dir=output_dir)
     prev_graph = os.path.join(prev_dir, graph_dir)
-    integrate_command = "panaroo-integrate --quiet -d " + prev_graph + " -i " + annotation_file + " -t " + str(threads) + " -o " + temp_dir
+    integrate_command = "panaroo-integrate -d " + prev_graph + " -i " + annotation_file + " -t " + str(8) + " -o " + temp_dir
+    sys.stderr.write("\nIntegrating isolate: " + isolate_label + "\n")
     subprocess.run(integrate_command, check=True, shell=True)
+    sys.stderr.write("\Successfully integrated isolate: " + isolate_label + ", extracting annotations\n")
     # extract the genes annotated in the isolates genome
     G = nx.read_gml(os.path.join(temp_dir, "final_graph.gml"))
     gene_data = pd.read_csv(os.path.join(temp_dir, "gene_data.csv"))
     gene_data_json = {}
-    for row in tqdm(range(len(gene_data))):
+    for row in range(len(gene_data)):
         if gene_data["gff_file"][row] == isolate_label:
             cluster_dict = {gene_data["clustering_id"][row] : gene_data["annotation_id"][row]}
             gene_data_json.update(cluster_dict)

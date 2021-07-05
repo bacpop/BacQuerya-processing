@@ -8,7 +8,7 @@ from joblib import Parallel, delayed
 import json
 import networkx as nx
 import os
-import pyodbc
+#import pyodbc
 import re
 import shutil
 import sys
@@ -127,7 +127,7 @@ def elasticsearch_isolates(allIsolatesJson,
                     del allIsolatesJson[line]["foundIn_indices"]
                     del allIsolatesJson[line]["foundIn_biosamples"]
                     del allIsolatesJson[line]["member_annotation_ids"]
-                    # extract supplementary metadata for isoaltes identified to be containing the gene
+                    # extract supplementary metadata for isolates identified to be containing the gene
                     metaList = []
                     for isolate_row in isolateMetadataDict:
                         if isolate_row["isolate_index"] in isolate_indices:
@@ -139,12 +139,16 @@ def elasticsearch_isolates(allIsolatesJson,
                                 isolate_metadata.update({"scaffold_stats": isolate_row["scaffold_stats"]})
                             if "In_Silico_St" in isolate_row:
                                 isolate_metadata.update({"In_Silico_St": isolate_row["In_Silico_St"]})
+                            if "In_Silico_Serotype" in isolate_row:
+                                isolate_metadata.update({"In_Silico_Serotype": isolate_row["In_Silico_Serotype"]})
                             if "GPSC" in isolate_row:
-                                isolate_metadata.update({"contig_stats": isolate_row["GPSC"]})
+                                isolate_metadata.update({"GPSC": isolate_row["GPSC"]})
                             if "Country" in isolate_row:
-                                isolate_metadata.update({"contig_stats": isolate_row["Country"]})
+                                isolate_metadata.update({"Country": isolate_row["Country"]})
                             if "Year" in isolate_row:
-                                isolate_metadata.update({"contig_stats": isolate_row["Year"]})
+                                isolate_metadata.update({"Year": isolate_row["Year"]})
+                            if "Organism_name" in isolate_row:
+                                isolate_metadata.update({"Organism_name": isolate_row["Organism_name"]})
                             metaList.append(isolate_metadata)
                     response = elastic_client.index(index = index_name,
                                                     id = int(line),

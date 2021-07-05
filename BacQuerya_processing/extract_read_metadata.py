@@ -153,9 +153,13 @@ def download_ENA_metadata(accession_dict,
             # we're looking at the run accession,, need to extract the read accession
             temp_metadata = accession_metadata["RUN_SET"]["RUN"]
             run_accession = cleaned_accession
-            for elem in temp_metadata["RUN_LINKS"]["RUN_LINK"]:
-                if elem["XREF_LINK"]["DB"] == "ENA-SAMPLE":
-                    read_accession = elem["XREF_LINK"]["ID"]
+            if isinstance(temp_metadata["RUN_LINKS"]["RUN_LINK"], list):
+                for elem in temp_metadata["RUN_LINKS"]["RUN_LINK"]:
+                    if elem["XREF_LINK"]["DB"] == "ENA-SAMPLE":
+                        read_accession = elem["XREF_LINK"]["ID"]
+            else:
+                if "XREF_LINK" in temp_metadata["RUN_LINKS"]["RUN_LINK"] and temp_metadata["RUN_LINKS"]["RUN_LINK"]["XREF_LINK"]["DB"] == "ENA-SAMPLE":
+                    read_accession = temp_metadata["RUN_LINKS"]["RUN_LINK"]["XREF_LINK"]["ID"]
             apiURL = "https://www.ebi.ac.uk/ena/browser/api/xml/" + read_accession
             urlResponse = requests.get(apiURL)
             accession_metadata = dict(xmltodict.parse(urlResponse.text))
@@ -185,16 +189,20 @@ def download_ENA_metadata(accession_dict,
                         genome_representation = "full"
                         assemblyLink = assemblyURLs[biosample_id]
                         # download the assembly file and save to a temp directory
-                        ssl._create_default_https_context = ssl._create_unverified_context
+                        #ssl._create_default_https_context = ssl._create_unverified_context
                         assemblyFile = os.path.join(temp_dir, os.path.basename(assemblyLink))
-                        with urlopen(assemblyLink) as in_stream, open(assemblyFile, 'wb') as out_file:
-                            copyfileobj(in_stream, out_file)
+                        #with urlopen(assemblyLink) as in_stream, open(assemblyFile, 'wb') as out_file:
+                            #copyfileobj(in_stream, out_file)
+                        subprocess.run("wget -O " + assemblyFile + " " + assemblyLink.replace("http", "ftp"), shell = True, check = True)
                         # unzip the assembly file if necessary
-                        if ".gz" in assemblyFile:
-                            subprocess.run("gunzip " + assemblyFile, shell=True, check=True)
-                        # calculate assembly statistics
-                        contig_stats, scaffold_stats = calculate_assembly_stats(assemblyFile.replace(".gz", ""))
-                        assembly_stats = True
+                        try:
+                            if ".gz" in assemblyFile:
+                                subprocess.run("gunzip " + assemblyFile, shell=True, check=True)
+                            # calculate assembly statistics
+                            contig_stats, scaffold_stats = calculate_assembly_stats(assemblyFile.replace(".gz", ""))
+                            assembly_stats = True
+                        except:
+                            assembly_stats = False
                         fastqLinks.append(assemblyLink)
                     else:
                         genome_representation = "reads"

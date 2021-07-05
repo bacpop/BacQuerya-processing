@@ -80,9 +80,9 @@ def main():
     # open connection to Azure AQL DB
     with pyodbc.connect(SQL_CONNECTION_STRING) as conn:
         with conn.cursor() as cursor:
-            cursor.execute('''CREATE TABLE ISOLATE_METADATA
-                (ISOLATE_ID INT PRIMARY KEY     NOT NULL,
-                METADATA           TEXT    NOT NULL);''')
+            #cursor.execute('''CREATE TABLE ISOLATE_METADATA
+              #  (ISOLATE_ID INT PRIMARY KEY     NOT NULL,
+              #  METADATA           TEXT    NOT NULL);''')
             #cursor.execute("DROP TABLE ISOLATE_METADATA;")
             for line in tqdm(doc_list):
                 #try:
@@ -98,6 +98,11 @@ def main():
                         line["Year"] = int(line["Year"])
                 if "contig_stats" in line.keys():
                     line["contig_stats"]["N50"] = int(line["contig_stats"]["N50"])
+                if "BioSample_Owner" in line.keys():
+                    try:
+                        line["BioSample_Owner"] = line["BioSample_Owner"]["#text"]
+                    except:
+                        line["BioSample_Owner"] = line["BioSample_Owner"]
                 # store a list of genes in isolates in the SQL db
                 if "consistentNames" in line:
                     MetadataJSON = json.dumps({"consistentNames": line["consistentNames"]})
@@ -109,6 +114,7 @@ def main():
                                         id = line["isolate_index"],
                                         body = line,
                                         request_timeout=60)
+                cursor.close()
                 seen_indices.append(str(line["isolate_index"]))
                 #except:
                     #sys.stderr.write('\nIssue indexing isolate: ' + line['isolateName'] + '\n')
