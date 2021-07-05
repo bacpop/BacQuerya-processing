@@ -244,6 +244,8 @@ def download_ENA_metadata(accession_dict,
         if GPS:
             metadata.update(GPS_metadata)
         if ESC:
+            if not "Year" in GPS_metadata:
+                GPS_metadata["Year"] = int(GPS_metadata["BioSample_CollectionDate"])
             metadata.update(ESC_metadata)
         # add assembly stats to isolate metadata if it is defined
         if assembly_stats:

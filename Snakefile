@@ -503,12 +503,16 @@ rule extract_genes:
         index=config['extract_assembly_stats']['index_file'],
         threads=config['n_cpu'],
         index_name=config['index_sequences']['elasticSearchIndex'],
-        run_type=config["run_type"]
+        run_type=config["run_type"],
+        skipGenes=config["skip_genes"]
     run:
-        if os.path.exists("extracted_genes2"):
-            shell("mkdir {output} && cp extracted_genes2/* {output}")
+        if not params.skipGenes:
+            if os.path.exists("extracted_genes2"):
+                shell("mkdir {output} && cp extracted_genes2/* {output}")
+            else:
+                shell('python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -m {input.assemblyStatDir} -r {input.read_metadata} -g {input.graphDir} -i {params.index} -o {output} --threads {params.threads} --index-name {params.index_name} --prev-dir previous_run --run-type {params.run_type} --update')
         else:
-            shell('python extract_genes-runner.py -s {input.genomes} -a {input.annotations} -m {input.assemblyStatDir} -r {input.read_metadata} -g {input.graphDir} -i {params.index} -o {output} --threads {params.threads} --index-name {params.index_name} --prev-dir previous_run --run-type {params.run_type} --update')
+            shell("mkdir {output}")
 
 # calculate score for isolates based on available metadata
 rule calculate_score:
@@ -532,11 +536,15 @@ rule mafft_align:
         isolate_stats=rules.extract_assembly_stats.output,
         sampleList="GPS_samples.txt"
     params:
-        threads=config['n_cpu']
+        threads=config['n_cpu'],
+        skipGenes=config["skip_genes"]
     output:
         directory("aligned_gene_sequences")
     run:
-        shell("python generate_alignments-runner.py --graph-dir {input.graphDir} --extracted-genes {input.extracted_genes} -i {input.isolate_stats} --output-dir {output} --subsample {input.sampleList} --threads {params.threads}")
+        if not params.skipGenes:
+            shell("python generate_alignments-runner.py --graph-dir {input.graphDir} --extracted-genes {input.extracted_genes} -i {input.isolate_stats} --output-dir {output} --subsample {input.sampleList} --threads {params.threads}")
+        else:
+            shell("mkdir {output}")
 
 # append isolate attributes to elasticsearch index
 rule index_isolate_attributes:
@@ -551,7 +559,7 @@ rule index_isolate_attributes:
     output:
         touch("index_isolates.done")
     run:
-        if indexIsolates:
+        if params.indexIsolates:
             shell('python index_isolate_attributes-runner.py -f {input.assemblyStatDir}/isolateAssemblyAttributes.json -e {input.ena_metadata} -i {params.index} -g {input.feature_file}')
 
 # merge the current run with information from previous runs
@@ -565,11 +573,34 @@ rule merge_runs:
         aligned_genes=rules.mafft_align.output,
         graphDir=rules.run_panaroo.output
     params:
-        threads=config['n_cpu']
+        threads=config['n_cpu'],
+        skip_NCBI=config['skip_NCBI'],
+        skip_ENA=config['skip_ENA'],
+        skip_genes=config['skip_genes']
     output:
         touch("merge_runs.done")
     run:
-        shell('python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --read-metadata {input.readMetadataDir} --graph-dir {input.graphDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --assemblyAccessions {input.currentRunAccessions} --readAccessions {input.readAccessions} --previous-run previous_run --threads {params.threads}')
+        if not (params.skip_NCBI and params.skip_genes):
+            # if updated NCBI and gene data (and ENA data if present)
+            shell('python merge_runs-runner.py --ncbi-metadata {input.ncbiAssemblyStatDir} --read-metadata {input.readMetadataDir} --graph-dir {input.graphDir} --geneMetadataDir {input.extractedGeneMetadata} --alignment-dir {input.aligned_genes} --assemblyAccessions {input.currentRunAccessions} --readAccessions {input.readAccessions} --previous-run previous_run --threads {params.threads}')
+        if not params.skip_NCBI and params.skip_ENA and params.skip_genes:
+            # update only the NCBI assembly metadata and not ENA data or gene data
+            with open(os.path.join(input.ncbiAssemblyStatDir[0], "isolateAssemblyAttributes.json")) as currentAssemblies:
+                currentAssemblyData = json.loads(currentAssemblies.read())["information"]
+            with open(os.path.join("previous_run", input.ncbiAssemblyStatDir, "isolateAssemblyAttributes.json"), "r") as previousAssemblies:
+                previousAssemblyData = json.loads(previousAssemblies.read())
+            previousAssemblyData["information"] += currentAssemblyData
+            with open(os.path.join("previous_run", input.ncbiAssemblyStatDir, "isolateAssemblyAttributes.json"), "w") as updatedAssemblies:
+                updatedAssemblies.write(json.dumps(previousAssemblyData))
+        if not params.skip_ENA and params.skip_NCBI:
+            # update only the read metadata and not NCBI metadata or gene data
+            with open(os.path.join(input.readMetadataDir[0], "isolateReadAttributes.json")) as currentReads:
+                currentReadData = json.loads(currentReads.read())["information"]
+            with open(os.path.join("previous_run", input.readMetadataDir, "isolateReadAttributes.json"), "r") as previousReads:
+                previousReadData = json.loads(previousReads.read())
+            previousReadData["information"] += currentReadData
+            with open(os.path.join("previous_run", input.readMetadataDir, "isolateReadAttributes.json"), "w") as updatedReads:
+                updatedReads.write(json.dumps(previousReadData))
 
 # build COBS index of gene sequences from the output of extract_genes
 rule index_gene_sequences:
@@ -584,13 +615,17 @@ rule index_gene_sequences:
         index_type=config['index_sequences']['gene_type'],
         elasticIndex=config['index_sequences']['elasticSearchIndex'],
         index_genes=config["index_genes"],
-        index_sequences=config["index_sequences"]
+        index_sequences=config["index_sequences"],
+        skipGenes=config["skip_genes"]
     run:
-        if params.index_genes:
-            shell('python index_gene_features-runner.py -t {params.index_type} -i previous_run/extracted_genes -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads} --elastic-index --index {params.elasticIndex}')
-        if not params.index_genes and params.index_sequences:
-            shell('python index_gene_features-runner.py -t {params.index_type} -i previous_run/extracted_genes -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads}')
-        if not params.index_genes and not params.index_sequences:
+        if not params.skipGenes:
+            if params.index_genes:
+                shell('python index_gene_features-runner.py -t {params.index_type} -i previous_run/extracted_genes -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads} --elastic-index --index {params.elasticIndex}')
+            if not params.index_genes and params.index_sequences:
+                shell('python index_gene_features-runner.py -t {params.index_type} -i previous_run/extracted_genes -g previous_run/panaroo_output -o {output} --kmer-length {params.k_mer} --threads {params.threads}')
+            if not params.index_genes and not params.index_sequences:
+                shell("mkdir {output}")
+        else:
             shell("mkdir {output}")
 
 # build COBS index of gene sequences from the output of extract_genes

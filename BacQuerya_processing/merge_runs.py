@@ -194,10 +194,11 @@ def main():
                              args.prev_run)
         sys.stderr.write("\nDone\n")
         # merge read metadata for isolates for current and previous runs
-        sys.stderr.write("\nMerging current and previous isolate read metadata\n")
         currentReadMetadata = os.path.join(args.read_metadata, "isolateReadAttributes.json")
-        mergeIsolateMetadata(currentReadMetadata,
-                             args.prev_run)
+        if os.path.exists(currentReadMetadata):
+            sys.stderr.write("\nMerging current and previous isolate read metadata\n")
+            mergeIsolateMetadata(currentReadMetadata,
+                                args.prev_run)
         sys.stderr.write("\nDone\n")
         # merge key value pairs for current and previous runs
         sys.stderr.write("\nMerging current and previous NCBI key value pairs\n")

@@ -6,6 +6,7 @@ BacQuerya_location: .
 run_type: reference
 skip_NCBI: False
 skip_ENA: True
+skip_genes: False
 
 # needed for a "reference" run. Tells snakemake to add gene information merged together from all runs to the elastic gene index
 index_genes: False

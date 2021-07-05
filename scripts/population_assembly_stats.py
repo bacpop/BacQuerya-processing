@@ -34,7 +34,10 @@ def main():
         isolate_stats["scaffold_N50"] = isolate["contig_stats"]["N50"]
         isolate_stats["scaffold_mean_length"] = isolate["scaffold_stats"]["mean"]
         isolate_stats["scaffold_count"] = isolate["scaffold_stats"]["sequence_count"]
-        data[isolate["isolateNameUnderscore"]] = isolate_stats
+        try:
+            data[isolate["isolateNameUnderscore"]] = isolate_stats
+        except KeyError:
+            data[isolate["isolateName"]] = isolate_stats
     with open("population_assembly_stats.json", "w") as outJSON:
         outJSON.write(json.dumps(data))
     sys.exit(0)

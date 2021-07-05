@@ -114,11 +114,11 @@ def main():
                                         id = line["isolate_index"],
                                         body = line,
                                         request_timeout=60)
-                cursor.close()
                 seen_indices.append(str(line["isolate_index"]))
                 #except:
                     #sys.stderr.write('\nIssue indexing isolate: ' + line['isolateName'] + '\n')
                    # failed.append(line['isolateName'])
+    cursor.close()
     with open("ISOLATE_SEEN_INDICES.txt", "w") as seen:
         seen.write("\n".join(seen_indices))
     with open("ISOLATE_INDEXING_FAILED.txt", "w") as failed:
