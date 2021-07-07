@@ -46,8 +46,12 @@ def assess_contamination(hashDict, genus):
     sdi = calculate_sdi(hashDict)
     contaminated = False
     for species, hashes in hashDict.items():
-        if int(hashes.split("/")[0]) > 10 and not species.split(" ")[2].lower() == genus:
-            contaminated = True
+        if "seqs]" in species:
+            if int(hashes.split("/")[0]) > 10 and not species.split(" ")[2].lower() == genus:
+                contaminated = True
+        else:
+            if int(hashes.split("/")[0]) > 10 and not species.split(" ")[1].lower() == genus:
+                contaminated = True
     if sdi > 0.2 or contaminated:
         return -10
     else:

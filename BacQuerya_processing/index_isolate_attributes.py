@@ -12,6 +12,7 @@ import sys
 from tqdm import tqdm
 
 from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_ISOLATE_API_ID, ELASTIC_ISOLATE_API_KEY, SQL_CONNECTION_STRING
+from BacQuerya_processing.extract_read_metadata import standardise_species
 
 def get_options():
 
@@ -103,6 +104,14 @@ def main():
                         line["BioSample_Owner"] = line["BioSample_Owner"]["#text"]
                     except:
                         line["BioSample_Owner"] = line["BioSample_Owner"]
+                if "Date" in line.keys():
+                    date = str(line["Date"]).split("-")
+                    for num in range(len(date)):
+                        if not len(date[num]) >= 2:
+                            date[num] = "0" + date[num]
+                    line["Date"] = "-".join(date)
+                if "Organism_name" in line.keys():
+                    line["Organism_name"] = standardise_species(line["Organism_name"])
                 # store a list of genes in isolates in the SQL db
                 if "consistentNames" in line:
                     MetadataJSON = json.dumps({"consistentNames": line["consistentNames"]})
@@ -119,8 +128,8 @@ def main():
                     #sys.stderr.write('\nIssue indexing isolate: ' + line['isolateName'] + '\n')
                    # failed.append(line['isolateName'])
     cursor.close()
-    with open("ISOLATE_SEEN_INDICES.txt", "w") as seen:
-        seen.write("\n".join(seen_indices))
-    with open("ISOLATE_INDEXING_FAILED.txt", "w") as failed:
-        failed.write("\n".join(failed))
+    #with open("ISOLATE_SEEN_INDICES.txt", "w") as seen:
+       # seen.write("\n".join(seen_indices))
+    #with open("ISOLATE_INDEXING_FAILED.txt", "w") as failed:
+       # failed.write("\n".join(failed))
     sys.exit(0)

@@ -15,6 +15,7 @@ from tqdm import tqdm
 import xmltodict
 
 from BacQuerya_processing.secrets import ENTREZ_API_KEY
+from BacQuerya_processing.extract_read_metadata import standardise_species
 
 def get_options():
 
@@ -86,10 +87,10 @@ def get_biosample_metadata(biosample_accession,
     Entrez.api_key = ENTREZ_API_KEY
     handle = Entrez.read(Entrez.esearch(db="biosample", term=biosample_accession, retmax = 10))
     assembly_ids = handle['IdList']
-    esummary_handle = Entrez.esummary(db="biosample", id=assembly_ids[0], report="full")
     try:
+        esummary_handle = Entrez.esummary(db="biosample", id=assembly_ids[0], report="full")
         esummary_record = Entrez.read(esummary_handle, validate = False)
-    except ValueError:
+    except:
         sys.stderr.write("\nError with:" + biosample_accession + "\n")
         return None
     biosample_identifiers = esummary_record["DocumentSummarySet"]["DocumentSummary"][0]["Identifiers"]
@@ -100,7 +101,10 @@ def get_biosample_metadata(biosample_accession,
                           "BioSample_SubmissionDate": biosample_metadata_dict["BioSample"]["@submission_date"],
                           "BioSample_Owner": biosample_metadata_dict["BioSample"]["Owner"]["Name"],
                           "BioSample_Status": biosample_metadata_dict["BioSample"]["Status"]["@status"]}
-    attributes = biosample_metadata_dict["BioSample"]["Attributes"]["Attribute"]
+    try:
+        attributes = biosample_metadata_dict["BioSample"]["Attributes"]["Attribute"]
+    except TypeError:
+        return None
     if isinstance(attributes, list):
         for attr in range(len(attributes)):
             if attributes[attr]["@attribute_name"] == "INSDC center name":
@@ -150,6 +154,8 @@ def assembly_to_JSON(assigned_index,
         try:
             attribute = re.search('# (.*?):', line).group(1).replace(" ", "_")
             feature_dict = {attribute : line.split(":")[-1].strip().replace("_", " ")}
+            if "Organism_name" in feature_dict:
+                feature_dict["Organism_name"] = standardise_species(feature_dict["Organism_name"])
             assembly_dict.update(feature_dict)
         except AttributeError:
             pass
