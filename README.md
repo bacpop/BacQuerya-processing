@@ -242,20 +242,6 @@ bin\elasticsearch.bat
 bin/elasticsearch
 ```
 
-## Running the redis server
-
-Redis is a locally- or server-hosted No-SQL data storage tool. Unlike elasticsearch, it only allows string records to be retrieved by specifying the exact key but can generally support a larger quantity of data per document. We use Redis to supplement the information available in our elastic indices with additional metadata we do not need to search through when users submit a query on the BacQuerya website. Redis can be installed and configured with the following commands:
-```
-wget http://download.redis.io/redis-stable.tar.gz
-tar xvzf redis-stable.tar.gz
-cd redis-stable
-make
-```
-The Redis server can be started with:
-```
-redis-server
-```
-
 # Specifying elastic parameters and secrets
 
 Our Elastic parameters and API keys are not available for public use therefore, to make BacQuerya-processing communicate with your local elasticsearch instance you must create a ```secrets.py``` file in the ```BacQuerya_processing``` directory and define the following parameters for export:

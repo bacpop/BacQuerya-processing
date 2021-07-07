@@ -4,16 +4,26 @@ BacQuerya_location: .
 # whether this run is building the reference information for a species ("reference") or processing new isolates ("query")
 # unless you are adding a new species to the indices, this has to be "query"
 run_type: reference
+skip_NCBI: False
+skip_ENA: True
+skip_genes: False
 
 # needed for a "reference" run. Tells snakemake to add gene information merged together from all runs to the elastic gene index
 index_genes: False
+index_sequences: False #construct COBS index for genes
+index_isolates: False
 
 # whether we are indexing the GPS data or not
-GPS: True
-GPS_metadataJSON: GPS_metadata.json
+GPS: False
+
+# whether we are indexing the ESC data or not
+ESC: False
+
+# name of GPS/ESC metadata json
+supplementaryMetadataJSON: ESC_metadata.json
 
 # multiprocessing option
-n_cpu: 3
+n_cpu: 8
 
 # options for extract_entrez_information
 extract_entrez_information:
@@ -25,7 +35,7 @@ extract_entrez_information:
 
 # options to extract sequence reads
 extract_read_metadata:
-  accession_file:  EBI_requested_accessions.txt
+  accession_file:  ESC_ENA_Accessions.txt
 
 # options for single_meryl_dbs
 single_meryl_dbs:

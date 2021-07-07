@@ -1,21 +1,21 @@
 """
 Build a searcheable COBS index from the output of extract_genes
 """
-import cobs_index as cobs
+#import cobs_index as cobs
 from elasticsearch import Elasticsearch
 import glob
 from joblib import Parallel, delayed
 import json
 import networkx as nx
 import os
+#import pyodbc
 import re
-import redis
 import shutil
 import sys
 from tqdm import tqdm
 import tempfile
 
-from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY, REDIS_HOST, REDIS_PORT, REDIS_PASSWORD
+from BacQuerya_processing.secrets import ELASTIC_API_URL, ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY, SQL_CONNECTION_STRING
 
 def get_options():
 
@@ -49,6 +49,11 @@ def get_options():
                         dest="assembly_dir",
                         required=False,
                         help='directory of assembly sequences (required for type=assembly)',
+                        type=str)
+    io_opts.add_argument("--isolate-dir",
+                        dest="isolate_dir",
+                        required=False,
+                        help='directory of isolate metadata output by extract_assembly_stats.py',
                         type=str)
     io_opts.add_argument("-o",
                         "--output-dir",
@@ -92,41 +97,73 @@ def get_options():
     return (args)
 
 def elasticsearch_isolates(allIsolatesJson,
-                           index_name):
+                           index_name,
+                           isolateMetadataDict):
     """Function to index gene metadata. Gene annotations are index using elastic and a list of isolates containing each gene is stored in a redis database"""
     # rate of indexing with elastic decreases substantially after about 1500 items
     partioned_items = [
         list(allIsolatesJson.keys())[i:i + 1500] for i in range(0, len(allIsolatesJson.keys()), 1500)
         ]
-    sys.stderr.write('\nIndexing CDS features\n')
+    sys.stderr.write('\nIndexing gene metadata\n')
+    with pyodbc.connect(SQL_CONNECTION_STRING) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute('''CREATE TABLE GENE_METADATA
+                (GENE_ID INT PRIMARY KEY     NOT NULL,
+                 METADATA           TEXT    NOT NULL);''')
+            #cursor.execute("DROP TABLE GENE_METADATA;")
     for keys in tqdm(partioned_items):
         elastic_client = Elasticsearch([ELASTIC_API_URL],
                                 api_key=(ELASTIC_GENE_API_ID, ELASTIC_GENE_API_KEY))
-        redis_client = redis.StrictRedis(host=REDIS_HOST,
-                                         port=REDIS_PORT,
-                                         password=REDIS_PASSWORD,
-                                         decode_responses=True)
         # iterate through features
-        for line in tqdm(keys):
-            isolate_labels = allIsolatesJson[line]["foundIn_labels"]
-            isolate_indices = allIsolatesJson[line]["foundIn_indices"]
-            isolate_biosamples = allIsolatesJson[line]["foundIn_biosamples"]
-            isolate_annotationIDs = allIsolatesJson[line]["member_annotation_ids"]
-            # delete isolates from the gene metadata to reduce elastic entry size
-            del allIsolatesJson[line]["foundIn_labels"]
-            del allIsolatesJson[line]["foundIn_indices"]
-            del allIsolatesJson[line]["foundIn_biosamples"]
-            del allIsolatesJson[line]["member_annotation_ids"]
-            response = elastic_client.index(index = index_name,
-                                            id = int(line),
-                                            body = allIsolatesJson[line],
-                                            request_timeout=60)
-            # store a list of isolates containing the gene in a redis db
-            redis_dict = {"foundIn_labels": isolate_labels,
-                          "foundIn_indices": isolate_indices,
-                          "foundIn_biosamples": isolate_biosamples,
-                          "member_annotation_ids": isolate_annotationIDs}
-            redis_client.set(int(line), json.dumps(redis_dict))
+        with pyodbc.connect(SQL_CONNECTION_STRING) as conn:
+            with conn.cursor() as cursor:
+                for line in tqdm(keys):
+                    isolate_labels = allIsolatesJson[line]["foundIn_labels"]
+                    isolate_indices = allIsolatesJson[line]["foundIn_indices"]
+                    isolate_biosamples = allIsolatesJson[line]["foundIn_biosamples"]
+                    isolate_annotationIDs = allIsolatesJson[line]["member_annotation_ids"]
+                    # delete isolates from the gene metadata to reduce elastic entry size
+                    del allIsolatesJson[line]["foundIn_labels"]
+                    del allIsolatesJson[line]["foundIn_indices"]
+                    del allIsolatesJson[line]["foundIn_biosamples"]
+                    del allIsolatesJson[line]["member_annotation_ids"]
+                    # extract supplementary metadata for isolates identified to be containing the gene
+                    metaList = []
+                    for isolate_row in isolateMetadataDict:
+                        if isolate_row["isolate_index"] in isolate_indices:
+                            isolate_metadata = {"BioSample": isolate_row["BioSample"],
+                                                "sequenceURL": isolate_row["sequenceURL"]}
+                            if "contig_stats" in isolate_row:
+                                isolate_metadata.update({"contig_stats": isolate_row["contig_stats"]})
+                            if "scaffold_stats" in isolate_row:
+                                isolate_metadata.update({"scaffold_stats": isolate_row["scaffold_stats"]})
+                            if "In_Silico_St" in isolate_row:
+                                isolate_metadata.update({"In_Silico_St": isolate_row["In_Silico_St"]})
+                            if "In_Silico_Serotype" in isolate_row:
+                                isolate_metadata.update({"In_Silico_Serotype": isolate_row["In_Silico_Serotype"]})
+                            if "GPSC" in isolate_row:
+                                isolate_metadata.update({"GPSC": isolate_row["GPSC"]})
+                            if "Country" in isolate_row:
+                                isolate_metadata.update({"Country": isolate_row["Country"]})
+                            if "Year" in isolate_row:
+                                isolate_metadata.update({"Year": isolate_row["Year"]})
+                            if "Organism_name" in isolate_row:
+                                isolate_metadata.update({"Organism_name": isolate_row["Organism_name"]})
+                            metaList.append(isolate_metadata)
+                    response = elastic_client.index(index = index_name,
+                                                    id = int(line),
+                                                    body = allIsolatesJson[line],
+                                                    request_timeout=60)
+                    # store a list of isolates containing the gene in the SQL db
+                    MetadataJSON = json.dumps({"foundIn_labels": isolate_labels,
+                                "foundIn_indices": isolate_indices,
+                                "foundIn_biosamples": isolate_biosamples,
+                                "member_annotation_ids": isolate_annotationIDs,
+                                "isolateMetadata": metaList})
+                    db_command = "INSERT INTO GENE_METADATA (GENE_ID,METADATA) \
+                        VALUES (" + str(line) + ", '" + MetadataJSON + "')"
+                    cursor.execute(db_command)
+    sys.stderr.write('\nGene metadata was indexed successfully\n')
 
 def write_gene_files(gene_dict, temp_dir):
     """Write gene sequences to individual files with index as filename"""
@@ -165,10 +202,14 @@ def main():
         if args.elastic:
             with open(os.path.join(args.input_dir, "annotatedNodes.json"), "r") as inFeatures:
                 geneString = inFeatures.read()
+            # supplement the gene metadata with metadata from the isolate metadata
+            with open(os.path.join(args.isolate_dir, "isolateAssemblyAttributes.json"), "r") as inIsolates:
+                isolateMetadataDict = json.loads(inIsolates.read())["information"]
             isolateGeneDicts = json.loads(geneString)["information"]
             sys.stderr.write('\nBuilding elasticsearch index\n')
             elasticsearch_isolates(isolateGeneDicts,
-                                   args.index_name)
+                                   args.index_name,
+                                   isolateMetadataDict)
         # load panaroo graph and write sequence files from COG representatives
         sys.stderr.write('\nLoading panaroo graph\n')
         G = nx.read_gml(os.path.join(args.graph_dir, "final_graph.gml"))
@@ -178,7 +219,7 @@ def main():
         representative_sequences = []
         sys.stderr.write('\nWriting gene-specific files for COBS indexing\n')
         # need to apply same constraints as those in extract_genes.py
-        for node in G._node:
+        for node in tqdm(G._node):
             y = G._node[node]
             gene_name = y["name"]
             splitNames = gene_name.split("~~~")
@@ -196,7 +237,7 @@ def main():
         # parrallelise writing of gene-specific files for indexing
         for job in tqdm(job_list):
             Parallel(n_jobs=args.n_cpu)(delayed(write_gene_files)(feature,
-                                                                    temp_dir) for feature in job)
+                                                                  temp_dir) for feature in job)
     if args.type == "assembly":
         assembly_files_compressed = glob.glob(os.path.join(args.assembly_dir, "*.fna"))
         job_list = [
@@ -211,6 +252,7 @@ def main():
                  args.output_dir,
                  args.kmer_length,
                  args.fpr)
+    sys.stderr.write('\nCleaning up raw files\n')
     if not args.dirty:
         shutil.rmtree(temp_dir)
     sys.exit(0)
