@@ -13,12 +13,14 @@ def get_options():
     io_opts = parser.add_argument_group('input')
     io_opts.add_argument("--assembly-metadata",
                         dest="assemblies",
-                        required=True,
+                        required=False,
+                        default=None,
                         help='Isolate asssembly metadata output by extact_asembly_stats.py',
                         type=str)
     io_opts.add_argument("--read-metadata",
                         dest="reads",
-                        required=True,
+                        required=False,
+                        default=None,
                         help='Isolate read metadata output by retrieve_read_metadata.py',
                         type=str)
     io_opts.add_argument("--threads",
@@ -41,16 +43,16 @@ def calculate_sdi(hashDict):
         sdi += abundance ** 2
     return 1 - sdi
 
-def assess_contamination(hashDict, genus):
+def assess_contamination(hashDict, organism):
     """Determine if a genomic sequence is contaminated and adjust rank score. If SHI is above 0.2, -10 from rank score."""
     sdi = calculate_sdi(hashDict)
     contaminated = False
     for species, hashes in hashDict.items():
         if "seqs]" in species:
-            if int(hashes.split("/")[0]) > 10 and not species.split(" ")[2].lower() == genus:
+            if int(hashes.split("/")[0]) > 10 and not species.split(" ")[2].lower() in organism:
                 contaminated = True
         else:
-            if int(hashes.split("/")[0]) > 10 and not species.split(" ")[1].lower() == genus:
+            if int(hashes.split("/")[0]) > 10 and not species.split(" ")[1].lower() in organism:
                 contaminated = True
     if sdi > 0.2 or contaminated:
         return -10
@@ -65,11 +67,11 @@ def caculate_score(isolate, GC_lower, GC_upper, length_lower, length_upper):
         # calculate contamination and adjust score
         mashHashes = isolate["mashHashes"]
         mashSpecies = isolate["mashSpecies"]
-        genus = isolate["Organism_name"].split(" ")[0].lower()
+        organism = isolate["Organism_name"]
         hashDict = {}
         for species in range(len(mashSpecies)):
             hashDict[mashSpecies[species]] = mashHashes[species]
-        score += assess_contamination(hashDict, genus)
+        score += assess_contamination(hashDict, organism)
     # adjust score depending on if reads or assembly
     if isolate["Genome_representation"] == "reads":
         score += 1
@@ -96,13 +98,15 @@ def main():
     """Main function. Parses command line args and calls functions."""
     args = get_options()
     sys.stderr.write("\nImporting metadata files\n")
-    with open(args.assemblies, "r") as assemblyMeta:
-        assemblies = json.loads(assemblyMeta.read())["information"]
-    with open(args.reads, "r") as readMeta:
-        reads = json.loads(readMeta.read())["information"]
-    assemblies = [assem for assem in assemblies if assem is not None]
-    reads = [r for r in reads if r is not None]
-    metadata = assemblies + reads
+    metadata = []
+    if args.assemblies:
+        with open(args.assemblies, "r") as assemblyMeta:
+            assemblies = json.loads(assemblyMeta.read())["information"]
+        metadata += [assem for assem in assemblies if assem is not None]
+    if args.reads:
+        with open(args.reads, "r") as readMeta:
+            reads = json.loads(readMeta.read())["information"]
+        metadata += [r for r in reads if r is not None]
     # calculate population wide IQR for GC content and length
     GC_proportions  = []
     lengths = []
@@ -118,29 +122,31 @@ def main():
     length_lower = length25 - 1.5*(length75 - length25)
     length_upper = length75 + 1.5*(length75 - length25)
     # parallelise calculation of the rank score for assemblies
-    job_list = [assemblies[i:i + args.n_cpu] for i in range(0, len(assemblies), args.n_cpu)]
-    assembliesScored = []
-    sys.stderr.write("\nCalculating assembly scores\n")
-    for job in tqdm(job_list):
-        assembliesScored += Parallel(n_jobs=args.n_cpu)(delayed(caculate_score)(metaLine,
-                                                                                GC_lower,
-                                                                                GC_upper,
-                                                                                length_lower,
-                                                                                length_upper) for metaLine in job)
-    with open(args.assemblies, "w") as assembliesOut:
-        assembliesOut.write(json.dumps({"information": assembliesScored}))
+    if args.assemblies:
+        job_list = [assemblies[i:i + args.n_cpu] for i in range(0, len(assemblies), args.n_cpu)]
+        assembliesScored = []
+        sys.stderr.write("\nCalculating assembly scores\n")
+        for job in tqdm(job_list):
+            assembliesScored += Parallel(n_jobs=args.n_cpu)(delayed(caculate_score)(metaLine,
+                                                                                    GC_lower,
+                                                                                    GC_upper,
+                                                                                    length_lower,
+                                                                                    length_upper) for metaLine in job)
+        with open(args.assemblies, "w") as assembliesOut:
+            assembliesOut.write(json.dumps({"information": assembliesScored}))
     # parallelise calculation of the rank score for reads
-    job_list = [reads[i:i + args.n_cpu] for i in range(0, len(reads), args.n_cpu)]
-    readsScored = []
-    sys.stderr.write("\nCalculating read scores\n")
-    for job in tqdm(job_list):
-        readsScored += Parallel(n_jobs=args.n_cpu)(delayed(caculate_score)(metaLine,
-                                                                           GC_lower,
-                                                                           GC_upper,
-                                                                           length_lower,
-                                                                           length_upper) for metaLine in job)
-    with open(args.reads, "w") as readsOut:
-        readsOut.write(json.dumps({"information": readsScored}))
+    if args.reads:
+        job_list = [reads[i:i + args.n_cpu] for i in range(0, len(reads), args.n_cpu)]
+        readsScored = []
+        sys.stderr.write("\nCalculating read scores\n")
+        for job in tqdm(job_list):
+            readsScored += Parallel(n_jobs=args.n_cpu)(delayed(caculate_score)(metaLine,
+                                                                            GC_lower,
+                                                                            GC_upper,
+                                                                            length_lower,
+                                                                            length_upper) for metaLine in job)
+        with open(args.reads, "w") as readsOut:
+            readsOut.write(json.dumps({"information": readsScored}))
     sys.exit(0)
 
 if __name__ == '__main__':

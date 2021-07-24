@@ -16,7 +16,7 @@ import tempfile
 from tqdm import tqdm
 import xmltodict
 
-from BacQuerya_processing.extract_assembly_stats import get_biosample_metadata, calculate_assembly_stats
+from BacQuerya_processing.extract_assembly_stats import get_biosample_metadata, calculate_assembly_stats, standardise_species
 from BacQuerya_processing.secrets import ENTREZ_API_KEY
 
 def get_options():
@@ -165,21 +165,6 @@ def get_ENA_accession(Id):
     except:
         return None
 
-def standardise_species(organism_name):
-    """Standardise the species name for the BacQuerya website"""
-    species_dict = {"Streptococcus pneumoniae": "Streptococcus pneumoniae",
-                "S. pneumoniae": "Streptococcus pneumoniae",
-                "S.pneumoniae": "Streptococcus pneumoniae",
-                "Escherichia coli": "Escherichia coli",
-                "E. coli": "Escherichia coli",
-                "E.coli": "Escherichia coli",
-                "Staphylococcus aureus": "Staphylococcus aureus",
-                "S. aureus": "Staphylococcus aureus",
-                "S.aureus": "Staphylococcus aureus"}
-    for key, value in species_dict.items():
-        if value in organism_name:
-            return key
-
 def download_ENA_metadata(accession_dict,
                           temp_dir,
                           GPS,
@@ -190,146 +175,146 @@ def download_ENA_metadata(accession_dict,
     queried_accession = cleaned_accession
     index_no = accession_dict["isolate_index"]
     apiURL = "https://www.ebi.ac.uk/ena/browser/api/xml/" + cleaned_accession
-    #try:
-    urlResponse = requests.get(apiURL)
-    accession_metadata = dict(xmltodict.parse(urlResponse.text))
-    if "ErrorDetails" in accession_metadata.keys():
-        identifier = get_ENA_accession(cleaned_accession)
-        if identifier:
-            apiURL = "https://www.ebi.ac.uk/ena/browser/api/xml/" + identifier
-            urlResponse = requests.get(apiURL)
-            accession_metadata = dict(xmltodict.parse(urlResponse.text))
-        else:
-            with open("ENA_READS_ERROR.txt", "a") as suppressed:
-                suppressed.write(cleaned_accession + "\n")
-            return None
-    if "RUN_SET" in accession_metadata.keys():
-        # we're looking at the run accession,, need to extract the read accession
-        temp_metadata = accession_metadata["RUN_SET"]["RUN"]
-        run_accession = cleaned_accession
-        if isinstance(temp_metadata["RUN_LINKS"]["RUN_LINK"], list):
-            for elem in temp_metadata["RUN_LINKS"]["RUN_LINK"]:
-                if elem["XREF_LINK"]["DB"] == "ENA-SAMPLE":
-                    read_accession = elem["XREF_LINK"]["ID"]
-        else:
-            if "XREF_LINK" in temp_metadata["RUN_LINKS"]["RUN_LINK"] and temp_metadata["RUN_LINKS"]["RUN_LINK"]["XREF_LINK"]["DB"] == "ENA-SAMPLE":
-                read_accession = temp_metadata["RUN_LINKS"]["RUN_LINK"]["XREF_LINK"]["ID"]
-        apiURL = "https://www.ebi.ac.uk/ena/browser/api/xml/" + read_accession
+    try:
         urlResponse = requests.get(apiURL)
         accession_metadata = dict(xmltodict.parse(urlResponse.text))
-    elif "SAMPLE_SET" in accession_metadata.keys():
-        cleaned_accession = cleaned_accession
-        run_accession = ""
-    try:
-        accession_metadata = accession_metadata["SAMPLE_SET"]
-    except:
-        with open("ENA_READS_ERROR.txt", "a") as error:
-            error.write(queried_accession + "\n")
-        return None
-    # extract biosample id for isolate
-    try:
-        biosample_id = accession_metadata["SAMPLE"]["IDENTIFIERS"]["EXTERNAL_ID"]["#text"]
-    except TypeError:
-        for ext in accession_metadata["SAMPLE"]["IDENTIFIERS"]["EXTERNAL_ID"]:
-            if ext["@namespace"] == "BioSample":
-                biosample_id = ext["#text"]
-    assembly_stats = False
-    for link in accession_metadata["SAMPLE"]["SAMPLE_LINKS"]["SAMPLE_LINK"]:
-        if link["XREF_LINK"]["DB"] == "ENA-RUN":
-            run_accession = link["XREF_LINK"]["ID"]
-        if link["XREF_LINK"]["DB"] == "ENA-FASTQ-FILES":
-            fastqTable = requests.get(link["XREF_LINK"]["ID"]).text.split("\t")
+        if "ErrorDetails" in accession_metadata.keys():
+            identifier = get_ENA_accession(cleaned_accession)
+            if identifier:
+                apiURL = "https://www.ebi.ac.uk/ena/browser/api/xml/" + identifier
+                urlResponse = requests.get(apiURL)
+                accession_metadata = dict(xmltodict.parse(urlResponse.text))
+            else:
+                with open("ENA_READS_ERROR.txt", "a") as suppressed:
+                    suppressed.write(cleaned_accession + "\n")
+                return None
+        if "RUN_SET" in accession_metadata.keys():
+            # we're looking at the run accession,, need to extract the read accession
+            temp_metadata = accession_metadata["RUN_SET"]["RUN"]
+            run_accession = cleaned_accession
+            if isinstance(temp_metadata["RUN_LINKS"]["RUN_LINK"], list):
+                for elem in temp_metadata["RUN_LINKS"]["RUN_LINK"]:
+                    if elem["XREF_LINK"]["DB"] == "ENA-SAMPLE":
+                        read_accession = elem["XREF_LINK"]["ID"]
+            else:
+                if "XREF_LINK" in temp_metadata["RUN_LINKS"]["RUN_LINK"] and temp_metadata["RUN_LINKS"]["RUN_LINK"]["XREF_LINK"]["DB"] == "ENA-SAMPLE":
+                    read_accession = temp_metadata["RUN_LINKS"]["RUN_LINK"]["XREF_LINK"]["ID"]
+            apiURL = "https://www.ebi.ac.uk/ena/browser/api/xml/" + read_accession
+            urlResponse = requests.get(apiURL)
+            accession_metadata = dict(xmltodict.parse(urlResponse.text))
+        elif "SAMPLE_SET" in accession_metadata.keys():
+            cleaned_accession = cleaned_accession
+            run_accession = ""
+        try:
+            accession_metadata = accession_metadata["SAMPLE_SET"]
+        except:
+            with open("ENA_READS_ERROR.txt", "a") as error:
+                error.write(queried_accession + "\n")
+            return None
+        # extract biosample id for isolate
+        try:
+            biosample_id = accession_metadata["SAMPLE"]["IDENTIFIERS"]["EXTERNAL_ID"]["#text"]
+        except TypeError:
+            for ext in accession_metadata["SAMPLE"]["IDENTIFIERS"]["EXTERNAL_ID"]:
+                if ext["@namespace"] == "BioSample":
+                    biosample_id = ext["#text"]
+        assembly_stats = False
+        for link in accession_metadata["SAMPLE"]["SAMPLE_LINKS"]["SAMPLE_LINK"]:
+            if link["XREF_LINK"]["DB"] == "ENA-RUN":
+                run_accession = link["XREF_LINK"]["ID"]
+            if link["XREF_LINK"]["DB"] == "ENA-FASTQ-FILES":
+                fastqTable = requests.get(link["XREF_LINK"]["ID"]).text.split("\t")
+                try:
+                    fastqLinks = fastqTable[4].split(";")
+                    for fql in range(len(fastqLinks)):
+                        fastqLinks[fql] = "https://" + fastqLinks[fql]
+                except:
+                    fastqLinks = []
+                # if an assembly is available in the ENA, add the link to the sequence links
+                if assemblyURLs:
+                    if biosample_id in assemblyURLs:
+                        # if a Blackwell assembly is available, we need to retrieve it and calculate assembly statistics
+                        genome_representation = "full"
+                        assemblyLink = assemblyURLs[biosample_id]
+                        # download the assembly file and save to a temp directory
+                        #ssl._create_default_https_context = ssl._create_unverified_context
+                        assemblyFile = os.path.join(temp_dir, os.path.basename(assemblyLink))
+                        #with urlopen(assemblyLink) as in_stream, open(assemblyFile, 'wb') as out_file:
+                            #copyfileobj(in_stream, out_file)
+                        subprocess.run("wget -q -O " + assemblyFile + " " + assemblyLink.replace("http", "ftp"), shell = True, check = True)
+                        #urllib.request.urlretrieve(assemblyLink.replace("http", "ftp"), assemblyFile)
+                        # unzip the assembly file if necessary
+                        try:
+                            if ".gz" in assemblyFile:
+                                subprocess.run("gunzip " + assemblyFile, shell=True, check=True)
+                            # calculate assembly statistics
+                            contig_stats, scaffold_stats = calculate_assembly_stats(assemblyFile.replace(".gz", ""))
+                            assembly_stats = True
+                        except:
+                            assembly_stats = False
+                        fastqLinks.append(assemblyLink)
+                    else:
+                        genome_representation = "reads"
+                accession_metadata.update({"ENA-FASTQ-FILES" : fastqLinks})
+        for attribute in accession_metadata["SAMPLE"]["SAMPLE_ATTRIBUTES"]["SAMPLE_ATTRIBUTE"]:
+            if attribute["TAG"] == "ENA-FIRST-PUBLIC":
+                submission_date = attribute["VALUE"]
+        try:
+            submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["@namespace"]
+        except:
             try:
-                fastqLinks = fastqTable[4].split(";")
-                for fql in range(len(fastqLinks)):
-                    fastqLinks[fql] = "https://" + fastqLinks[fql]
-            except:
-                fastqLinks = []
-            # if an assembly is available in the ENA, add the link to the sequence links
-            if assemblyURLs:
-                if biosample_id in assemblyURLs:
-                    # if a Blackwell assembly is available, we need to retrieve it and calculate assembly statistics
-                    genome_representation = "full"
-                    assemblyLink = assemblyURLs[biosample_id]
-                    # download the assembly file and save to a temp directory
-                    #ssl._create_default_https_context = ssl._create_unverified_context
-                    assemblyFile = os.path.join(temp_dir, os.path.basename(assemblyLink))
-                    #with urlopen(assemblyLink) as in_stream, open(assemblyFile, 'wb') as out_file:
-                        #copyfileobj(in_stream, out_file)
-                    subprocess.run("wget -q -O " + assemblyFile + " " + assemblyLink.replace("http", "ftp"), shell = True, check = True)
-                    #urllib.request.urlretrieve(assemblyLink.replace("http", "ftp"), assemblyFile)
-                    # unzip the assembly file if necessary
-                    try:
-                        if ".gz" in assemblyFile:
-                            subprocess.run("gunzip " + assemblyFile, shell=True, check=True)
-                        # calculate assembly statistics
-                        contig_stats, scaffold_stats = calculate_assembly_stats(assemblyFile.replace(".gz", ""))
-                        assembly_stats = True
-                    except:
-                        assembly_stats = False
-                    fastqLinks.append(assemblyLink)
-                else:
-                    genome_representation = "reads"
-            accession_metadata.update({"ENA-FASTQ-FILES" : fastqLinks})
-    for attribute in accession_metadata["SAMPLE"]["SAMPLE_ATTRIBUTES"]["SAMPLE_ATTRIBUTE"]:
-        if attribute["TAG"] == "ENA-FIRST-PUBLIC":
-            submission_date = attribute["VALUE"]
-    try:
-        submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["@namespace"]
-    except:
-        try:
-            submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["namespace"]
-        except KeyError:
-            submitter = None
-    # if we are indexing the GPS data, we need to set the isolate name as the lane_id
-    isolateName = cleaned_accession
-    if GPS:
-        try:
-            GPS_metadata = supplementary_metadataJSON[run_accession]
-            isolateName = GPS_metadata["Lane_Id"].replace("_", " ")
-        except KeyError:
-            for accession, supplement in supplementary_metadataJSON.items():
-                if "ERS" in supplement.keys() and supplement["ERS"] == cleaned_accession:
-                    GPS_metadata = supplement
-                    isolateName = GPS_metadata["Lane_Id"].replace("_", " ")
-    if ESC:
-        ESC_metadata = supplementary_metadataJSON[queried_accession]
+                submitter = accession_metadata["SAMPLE"]["IDENTIFIERS"]["SUBMITTER_ID"]["namespace"]
+            except KeyError:
+                submitter = None
+        # if we are indexing the GPS data, we need to set the isolate name as the lane_id
         isolateName = cleaned_accession
-    metadata = {"isolateName" : isolateName,
-                "accession" : cleaned_accession,
-                "read_accession" : cleaned_accession,
-                "isolate_index" : index_no,
-                "Genome_representation" : genome_representation,
-                "SubmissionDate" : submission_date,
-                "Organism_name" : standardise_species(accession_metadata["SAMPLE"]["SAMPLE_NAME"]["SCIENTIFIC_NAME"]),
-                "Taxid" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["TAXON_ID"],
-                "BioSample" : biosample_id,
-                "source" : "ENA",
-                "sequenceURL" : accession_metadata["ENA-FASTQ-FILES"],
-                "allAttributes" : json.dumps(accession_metadata["SAMPLE"])}
-    if GPS:
-        metadata.update(GPS_metadata)
-    if ESC:
-        if not "Year" in ESC_metadata and "BioSample_CollectionDate" in ESC_metadata:
-            ESC_metadata["Year"] = int(ESC_metadata["BioSample_CollectionDate"])
-            print(ESC_metadata["Year"])
-        metadata.update(ESC_metadata)
-    if submitter:
-        metadata.update({"Submitter": submitter})
-    # add assembly stats to isolate metadata if it is defined
-    if assembly_stats:
-        metadata["contig_stats"] = contig_stats
-        metadata["scaffold_stats"] = scaffold_stats
-    # output isolate: index pairs
-    indexIsolatePair = {isolateName: index_no}
-    if not run_accession == "":
-        metadata.update({"run_accession" : run_accession})
-    return [fastqLinks, metadata, indexIsolatePair]
-    #except:
-       # sys.stderr.write("Request failed for the following accession: " + cleaned_accession)
-       # with open("ENA_READS_ERROR.txt", "a") as failed:
-         #   failed.write(cleaned_accession + "\n")
-        #return None
+        if GPS:
+            try:
+                GPS_metadata = supplementary_metadataJSON[run_accession]
+                isolateName = GPS_metadata["Lane_Id"].replace("_", " ")
+            except KeyError:
+                for accession, supplement in supplementary_metadataJSON.items():
+                    if "ERS" in supplement.keys() and supplement["ERS"] == cleaned_accession:
+                        GPS_metadata = supplement
+                        isolateName = GPS_metadata["Lane_Id"].replace("_", " ")
+        if ESC:
+            ESC_metadata = supplementary_metadataJSON[queried_accession]
+            isolateName = cleaned_accession
+        metadata = {"isolateName" : isolateName,
+                    "accession" : cleaned_accession,
+                    "read_accession" : cleaned_accession,
+                    "isolate_index" : index_no,
+                    "Genome_representation" : genome_representation,
+                    "SubmissionDate" : submission_date,
+                    "Organism_name" : standardise_species(accession_metadata["SAMPLE"]["SAMPLE_NAME"]["SCIENTIFIC_NAME"]),
+                    "Taxid" : accession_metadata["SAMPLE"]["SAMPLE_NAME"]["TAXON_ID"],
+                    "BioSample" : biosample_id,
+                    "source" : "ENA",
+                    "sequenceURL" : accession_metadata["ENA-FASTQ-FILES"],
+                    "allAttributes" : json.dumps(accession_metadata["SAMPLE"])}
+        if GPS:
+            metadata.update(GPS_metadata)
+        if ESC:
+            if not "Year" in ESC_metadata and "BioSample_CollectionDate" in ESC_metadata:
+                ESC_metadata["Year"] = int(ESC_metadata["BioSample_CollectionDate"])
+                print(ESC_metadata["Year"])
+            metadata.update(ESC_metadata)
+        if submitter:
+            metadata.update({"Submitter": submitter})
+        # add assembly stats to isolate metadata if it is defined
+        if assembly_stats:
+            metadata["contig_stats"] = contig_stats
+            metadata["scaffold_stats"] = scaffold_stats
+        # output isolate: index pairs
+        indexIsolatePair = {isolateName: index_no}
+        if not run_accession == "":
+            metadata.update({"run_accession" : run_accession})
+        return [fastqLinks, metadata, indexIsolatePair]
+    except:
+        sys.stderr.write("Request failed for the following accession: " + cleaned_accession)
+        with open("ENA_READS_ERROR.txt", "a") as failed:
+            failed.write(cleaned_accession + "\n")
+        return None
 
 def main():
     """Main function. Parses command line args and calls functions."""

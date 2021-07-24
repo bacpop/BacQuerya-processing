@@ -100,7 +100,7 @@ def download_entries(cleaned_accession,
         attribute_link = os.path.join(url,label + entrez_attribute)
         urllib.request.urlretrieve(attribute_link, label + attribute_suffix)
         if ".gz" in attribute_suffix:
-            subprocess.run("gunzip " + label + attribute_suffix, shell = True, check = True)
+            subprocess.run("gunzip --force " + label + attribute_suffix, shell = True, check = True)
         successful_accessions.append(cleaned_accession)
     except ValueError:
         # the requested attribute is not present
