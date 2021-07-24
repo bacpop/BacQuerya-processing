@@ -15,7 +15,6 @@ from tqdm import tqdm
 import xmltodict
 
 from BacQuerya_processing.secrets import ENTREZ_API_KEY
-from BacQuerya_processing.extract_read_metadata import standardise_species
 
 def get_options():
 
@@ -128,6 +127,21 @@ def calculate_assembly_stats(genomeFile):
     contig_stats = calculate_stats(contig_lens, gc_cont)
     scaffold_stats = calculate_stats(scaffold_lens, gc_cont)
     return contig_stats, scaffold_stats
+
+def standardise_species(organism_name):
+    """Standardise the species name for the BacQuerya website"""
+    species_dict = {"Streptococcus pneumoniae": "Streptococcus pneumoniae",
+                "S. pneumoniae": "Streptococcus pneumoniae",
+                "S.pneumoniae": "Streptococcus pneumoniae",
+                "Escherichia coli": "Escherichia coli",
+                "E. coli": "Escherichia coli",
+                "E.coli": "Escherichia coli",
+                "Staphylococcus aureus": "Staphylococcus aureus",
+                "S. aureus": "Staphylococcus aureus",
+                "S.aureus": "Staphylococcus aureus"}
+    for key, value in species_dict.items():
+        if value in organism_name:
+            return key
 
 def assembly_to_JSON(assigned_index,
                      genome_dir,

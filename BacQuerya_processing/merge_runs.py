@@ -129,7 +129,7 @@ def mergeAccessionIDs(current_assemblyAccessions, current_readAccessions, prev_d
     # merge read accessions
     with open(current_readAccessions, "r") as currentFile:
         current_readList = currentFile.read().splitlines()
-    previous_reads = os.path.join(prev_dir, "EBI_requested_accessions.txt")
+    previous_reads = os.path.join(prev_dir, "ENA_requested_accessions.txt")
     with open(previous_reads, "r") as previousFile:
         previous_accessionList = previousFile.read().splitlines()
     updated_accessionSet = set(previous_accessionList)
